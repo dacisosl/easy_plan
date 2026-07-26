@@ -1,31 +1,29 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Performance, SchoolLayer, SemesterPlan, Subject } from '@/types'
+import type { AiDraft, Performance, SchoolLayer, SemesterPlan, Subject, Unit } from '@/types'
 import { SCHOOL_SEED } from '@/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '@/data/subject'
 import { distributeUnits } from '@/lib/derive'
+import { buildPerformance } from '@/lib/autofill'
+import type { ImportedSubject } from '@/lib/importStandards'
+import { unitsFromAreas } from '@/lib/importStandards'
 
 export type ScreenId =
-  | 'home' // 09 시작 화면
-  | 'setup' // 01 과목 설정
-  | 'units' // 02 단원 매핑
-  | 'schedule' // 03 진도 설계
-  | 'performances' // 04 수행평가 목록
-  | 'performance' // 05 수행평가 편집
-  | 'review' // 06 검토
-  | 'focus' // 07 직접 확인 포커스 모드
-  | 'download' // 08 내려받기
-  | 'simple' // 10 간단 입력
-  | 'generating' // 11 생성 중
-  | 'result' // 12 생성 결과
+  | 'home' // 간단 입력 (기본 경로)
+  | 'setup' // 심화 1 · 과목 설정
+  | 'units' // 심화 2 · 단원 매핑
+  | 'schedule' // 심화 3 · 진도 설계
+  | 'performances' // 심화 4 · 수행평가
+  | 'review' // 로직 오류 (단계 밖 — 오류 시만 경유)
+  | 'download' // 심화 5 · 내려받기
+  | 'generating' // AI 문안 생성 파이프라인
 
-/** 심화 6단계 — 화면 헤더의 진행 표시 */
+/** 심화 5단계 — 검토는 단계에서 뺀다 (오류 있을 때만 경유) */
 export const STEPS: { id: ScreenId; label: string }[] = [
   { id: 'setup', label: '과목 설정' },
   { id: 'units', label: '단원 매핑' },
   { id: 'schedule', label: '진도 설계' },
   { id: 'performances', label: '수행평가' },
-  { id: 'review', label: '검토' },
   { id: 'download', label: '내려받기' },
 ]
 
@@ -35,18 +33,12 @@ interface State {
   plans: SemesterPlan[]
   currentPlanId: string | null
   screen: ScreenId
-  /** 05 수행평가 편집이 열고 있는 대상 */
-  editingPerfId: string | null
-  /** 07 직접 확인이 보고 있는 항목 번호 */
-  focusIndex: number
-  /** 12 생성 결과의 자동 채움 표시 */
-  showAutoMarks: boolean
 }
 
 interface Actions {
   go: (screen: ScreenId) => void
   openPlan: (id: string, screen?: ScreenId) => void
-  newPlan: (mode: '간단' | '심화') => string
+  newPlan: (mode: '간단' | '심화', subjectId?: string) => string
   deletePlan: (id: string) => void
 
   current: () => SemesterPlan | null
@@ -56,35 +48,34 @@ interface Actions {
   patchSubject: (patch: Partial<Subject>) => void
   patchSchool: (patch: Partial<SchoolLayer>) => void
 
+  /** /api/subjects/[name] 결과를 과목 레이어로 넣는다 (이름 일치 시 갱신). 반환 = subject id */
+  upsertSubject: (imported: ImportedSubject & { units?: Unit[] }) => string
+  /** 성취기준 없이 시작하는 수동 과목 */
+  upsertManualSubject: (name: string) => string
+
   setUnitStandards: (unitId: string, codes: string[]) => void
+  addUnit: (afterUnitId?: string) => void
+  patchUnit: (unitId: string, patch: Partial<Unit>) => void
+  removeUnit: (unitId: string) => void
+
   redistribute: () => void
   setWeekUnits: (week: number, unitIds: string[]) => void
 
-  editPerf: (id: string | null) => void
-  addPerf: () => void
+  /** 수행평가 추가/갱신 — 숫자·성취기준·루브릭 뼈대는 결정적 재계산 */
+  upsertPerf: (input: {
+    id?: string
+    name: string
+    intent: string
+    week: number
+    ratio?: number
+  }) => void
   patchPerf: (id: string, patch: Partial<Performance>) => void
   removePerf: (id: string) => void
 
-  setHumanCheck: (id: string, value: boolean) => void
-  setFocusIndex: (i: number) => void
-  setShowAutoMarks: (v: boolean) => void
+  setAiDraft: (ai: AiDraft) => void
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10)
-
-const emptyPerf = (n: number): Performance => ({
-  id: `perf-${uid()}`,
-  name: '',
-  method: '논술형',
-  ratio: 0,
-  max_score: 0,
-  base_score: 0,
-  week: n,
-  standard_codes: [],
-  method_checks: [],
-  activity: '',
-  rubric: [],
-})
 
 export const usePlanStore = create<State & Actions>()(
   persist(
@@ -94,36 +85,35 @@ export const usePlanStore = create<State & Actions>()(
       plans: [PLAN_SEED],
       currentPlanId: null,
       screen: 'home',
-      editingPerfId: null,
-      focusIndex: 0,
-      showAutoMarks: true,
 
       go: (screen) => set({ screen }),
 
       openPlan: (id, screen) =>
         set((s) => ({
           currentPlanId: id,
-          screen: screen ?? (s.plans.find((p) => p.id === id)?.mode === '간단' ? 'simple' : 'setup'),
+          screen: screen ?? (s.plans.find((p) => p.id === id)?.mode === '심화' ? 'setup' : 'home'),
         })),
 
-      newPlan: (mode) => {
+      newPlan: (mode, subjectId) => {
         const id = `plan-${uid()}`
-        const subject = get().subjects[0]
+        const subject =
+          get().subjects.find((x) => x.id === subjectId) ?? get().subjects[0]
         const plan: SemesterPlan = {
           ...PLAN_SEED,
           id,
           subject_id: subject.id,
           mode,
           step: 1,
+          teachers: [],
           performances: [],
-          distribution: {},
-          human_checks: {},
+          distribution: distributeUnits(subject.units, get().school.calendar.weeks, PLAN_SEED.exams),
+          ai: undefined,
           updated_at: new Date().toISOString(),
         }
         set((s) => ({
           plans: [plan, ...s.plans],
           currentPlanId: id,
-          screen: mode === '간단' ? 'simple' : 'setup',
+          screen: mode === '심화' ? 'setup' : 'home',
         }))
         return id
       },
@@ -164,23 +154,121 @@ export const usePlanStore = create<State & Actions>()(
 
       patchSchool: (patch) => set((s) => ({ school: { ...s.school, ...patch } })),
 
-      setUnitStandards: (unitId, codes) =>
-        set((s) => {
-          const plan = s.plans.find((p) => p.id === s.currentPlanId)
-          if (!plan) return s
-          return {
-            subjects: s.subjects.map((sub) =>
-              sub.id !== plan.subject_id
-                ? sub
-                : {
-                    ...sub,
-                    units: sub.units.map((u) =>
-                      u.id === unitId ? { ...u, standard_codes: codes } : u,
-                    ),
-                  },
+      upsertSubject: (imported) => {
+        const existing = get().subjects.find((x) => x.name === imported.name)
+        const units = imported.units ?? unitsFromAreas(imported)
+        if (existing) {
+          const known = new Set(imported.standards.map((x) => x.code))
+          const keptUnits =
+            existing.units.length > 0 &&
+            existing.units.some((u) => u.standard_codes.some((c) => known.has(c)))
+              ? existing.units.map((u) => ({
+                  ...u,
+                  standard_codes: u.standard_codes.filter((c) => known.has(c)),
+                }))
+              : units
+          set((s) => ({
+            subjects: s.subjects.map((x) =>
+              x.id === existing.id
+                ? {
+                    ...x,
+                    code_prefix: imported.code_prefix,
+                    scale_type: imported.scale_type,
+                    areas: imported.areas,
+                    standards: imported.standards,
+                    units: keptUnits,
+                  }
+                : x,
             ),
-          }
-        }),
+          }))
+          return existing.id
+        }
+        const id = `subj-${uid()}`
+        const subject: Subject = {
+          id,
+          name: imported.name,
+          code_prefix: imported.code_prefix,
+          type: 'elective',
+          is_common: imported.name.startsWith('공통') || /^통합|^한국사/.test(imported.name),
+          objectives: '',
+          scale_type: imported.scale_type,
+          teaching_plan: '',
+          areas: imported.areas,
+          standards: imported.standards,
+          units,
+          semester_levels: {},
+          min_level: null,
+        }
+        set((s) => ({ subjects: [...s.subjects, subject] }))
+        return id
+      },
+
+      upsertManualSubject: (name) => {
+        const existing = get().subjects.find((x) => x.name === name)
+        if (existing) return existing.id
+        const id = `subj-${uid()}`
+        const subject: Subject = {
+          id,
+          name,
+          code_prefix: '',
+          type: 'elective',
+          is_common: false,
+          objectives: '',
+          scale_type: 'LVL_5',
+          teaching_plan: '',
+          areas: [],
+          standards: [],
+          units: [],
+          semester_levels: {},
+          min_level: null,
+        }
+        set((s) => ({ subjects: [...s.subjects, subject] }))
+        return id
+      },
+
+      setUnitStandards: (unitId, codes) => {
+        get().patchSubject({
+          units: (get().currentSubject()?.units ?? []).map((u) =>
+            u.id === unitId ? { ...u, standard_codes: codes } : u,
+          ),
+        })
+      },
+
+      addUnit: (afterUnitId) => {
+        const subject = get().currentSubject()
+        if (!subject) return
+        const ordered = [...subject.units].sort((a, b) => a.order - b.order)
+        const at = afterUnitId ? ordered.findIndex((u) => u.id === afterUnitId) : ordered.length - 1
+        const anchor = ordered[at]
+        const nu: Unit = {
+          id: `u-${uid()}`,
+          order: 0,
+          name: '',
+          area_no: anchor?.area_no ?? subject.areas[0]?.no ?? null,
+          standard_codes: [],
+        }
+        const next = [...ordered.slice(0, at + 1), nu, ...ordered.slice(at + 1)].map((u, i) => ({
+          ...u,
+          order: i + 1,
+        }))
+        get().patchSubject({ units: next })
+      },
+
+      patchUnit: (unitId, patch) => {
+        get().patchSubject({
+          units: (get().currentSubject()?.units ?? []).map((u) =>
+            u.id === unitId ? { ...u, ...patch } : u,
+          ),
+        })
+      },
+
+      removeUnit: (unitId) => {
+        const units = (get().currentSubject()?.units ?? [])
+          .filter((u) => u.id !== unitId)
+          .sort((a, b) => a.order - b.order)
+          .map((u, i) => ({ ...u, order: i + 1 }))
+        get().patchSubject({ units })
+      },
 
       redistribute: () => {
         const plan = get().current()
@@ -196,14 +284,35 @@ export const usePlanStore = create<State & Actions>()(
         get().patchPlan({ distribution: { ...plan.distribution, [week]: unitIds } })
       },
 
-      editPerf: (id) => set({ editingPerfId: id, screen: id ? 'performance' : 'performances' }),
-
-      addPerf: () => {
+      upsertPerf: (input) => {
         const plan = get().current()
-        if (!plan) return
-        const p = emptyPerf(Math.max(1, (plan.exams[0]?.week ?? 8) + 2))
-        get().patchPlan({ performances: [...plan.performances, p] })
-        set({ editingPerfId: p.id, screen: 'performance' })
+        const subject = get().currentSubject()
+        const school = get().school
+        if (!plan || !subject) return
+
+        const others = plan.performances.filter((p) => p.id !== input.id)
+        // 비율을 정하지 않으면 남은 몫을 준다 (심화에서 직접 정하면 그 값)
+        const usedRatio = others.reduce((s, p) => s + p.ratio, 0)
+        const ratio = input.ratio ?? Math.max(0, school.rules.perf_ratio - usedRatio)
+
+        const built = buildPerformance({
+          id: input.id ?? `perf-${uid()}`,
+          name: input.name,
+          intent: input.intent,
+          ratio,
+          week: input.week,
+          school,
+          distribution: plan.distribution,
+          units: subject.units,
+        })
+
+        const exists = plan.performances.some((p) => p.id === built.id)
+        get().patchPlan({
+          performances: exists
+            ? plan.performances.map((p) => (p.id === built.id ? built : p))
+            : [...plan.performances, built],
+          ai: undefined, // 입력이 바뀌면 초안은 무효
+        })
       },
 
       patchPerf: (id, patch) => {
@@ -211,28 +320,38 @@ export const usePlanStore = create<State & Actions>()(
         if (!plan) return
         get().patchPlan({
           performances: plan.performances.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+          ai: undefined,
         })
       },
 
       removePerf: (id) => {
         const plan = get().current()
         if (!plan) return
-        get().patchPlan({ performances: plan.performances.filter((p) => p.id !== id) })
-        set({ editingPerfId: null, screen: 'performances' })
+        get().patchPlan({
+          performances: plan.performances.filter((p) => p.id !== id),
+          ai: undefined,
+        })
       },
 
-      setHumanCheck: (id, value) => {
-        const plan = get().current()
-        if (!plan) return
-        get().patchPlan({ human_checks: { ...plan.human_checks, [id]: value } })
-      },
-
-      setFocusIndex: (i) => set({ focusIndex: i }),
-      setShowAutoMarks: (v) => set({ showAutoMarks: v }),
+      setAiDraft: (ai) => get().patchPlan({ ai }),
     }),
     {
       name: 'easy-plan',
-      version: 1,
+      version: 2,
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<State> & { screen?: string }
+        if (version < 2) {
+          // v1의 화면 값(simple/result/focus/performance)을 새 흐름으로 접는다
+          const map: Record<string, ScreenId> = {
+            simple: 'home',
+            result: 'download',
+            focus: 'review',
+            performance: 'performances',
+          }
+          if (state.screen && map[state.screen]) state.screen = map[state.screen]
+        }
+        return state as State & Actions
+      },
       partialize: (s) => ({
         school: s.school,
         subjects: s.subjects,

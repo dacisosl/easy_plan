@@ -1,56 +1,57 @@
 @import 'tailwindcss';
 
 /* ══════════════════════════════════════════════════════════
-   디자인 토큰 — Claude Design "12개 화면 디자인 시스템"에서 옮김.
-   규칙: 40px 여백 · 8px 모서리 · 얇은 테두리 · 그림자 없음.
+   디자인 토큰 — 무드보드 2안 (흰 바탕 · 맑은 청남색).
+   규칙: 카드 상자 최소화 — 구획은 여백과 가는 구분선으로.
+   8px 모서리 · 얇은 테두리 · 그림자 없음.
    ══════════════════════════════════════════════════════════ */
 
 @theme {
   --font-sans: Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* 바탕 · 면 */
-  --color-bg: #efeeec;
+  /* 바탕 · 면 — 전부 흰색 계열 */
+  --color-bg: #ffffff;
   --color-surface: #ffffff;
-  --color-surface-sub: #fafaf9;
-  --color-surface-off: #f2f1ee;
+  --color-surface-sub: #f8f9fa;
+  --color-surface-off: #f1f3f5;
 
-  /* 테두리 */
-  --color-line: #e5e4e1;
-  --color-line-soft: #efeeeb;
-  --color-line-input: #d6d5d1;
-  --color-line-chip: #e0dfdb;
+  /* 테두리 — 옅게 */
+  --color-line: #e8eaed;
+  --color-line-soft: #eef0f2;
+  --color-line-input: #e0e3e7;
+  --color-line-chip: #e0e3e7;
 
   /* 글자 */
-  --color-ink: #1b1c1e;
-  --color-ink-2: #6f7176;
-  --color-ink-3: #8a8c88;
-  --color-ink-4: #a5a6a2;
-  --color-ink-5: #c6c6c2;
+  --color-ink: #1a1c1e;
+  --color-ink-2: #6b7075;
+  --color-ink-3: #9aa0a6;
+  --color-ink-4: #b8bdc2;
+  --color-ink-5: #c9cdd1;
 
-  /* 주색 — 남색 */
-  --color-navy: #14425a;
-  --color-navy-deep: #0e3145;
-  --color-navy-mid: #4e7189;
-  --color-navy-bg: #eef3f7;
-  --color-navy-line: #c7d7e2;
-  --color-navy-line-hover: #b9c7d2;
+  /* 주색 — 맑은 청남 */
+  --color-navy: #17547a;
+  --color-navy-deep: #123f5c;
+  --color-navy-mid: #5b87a6;
+  --color-navy-bg: #f0f6fa;
+  --color-navy-line: #cfe0eb;
+  --color-navy-line-hover: #b3cddd;
 
   /* 오류 — 붉은색 */
-  --color-red: #b3261e;
-  --color-red-bg: #fdf2f1;
-  --color-red-line: #f0cfcb;
-  --color-red-line-strong: #e0b6b1;
-  --color-red-ink: #7a3a34;
+  --color-red: #c62828;
+  --color-red-bg: #fdf3f2;
+  --color-red-line: #f2d4d1;
+  --color-red-line-strong: #e5b8b4;
+  --color-red-ink: #8f3a33;
   --color-red-hover: #fbe9e7;
 
   /* 경고 — 황토색 */
   --color-amber: #a9601a;
-  --color-amber-bg: #fbf3e8;
-  --color-amber-line: #ebd9bf;
-  --color-amber-dash: #c89b5c;
+  --color-amber-bg: #fff8ed;
+  --color-amber-line: #f2e3c8;
+  --color-amber-dash: #d3a35f;
   --color-amber-ink: #8a6a3a;
-  --color-amber-hover: #fdf9f3;
+  --color-amber-hover: #fdf6ea;
 
   /* 모서리 */
   --radius-card: 12px;
@@ -86,8 +87,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════
-   컴포넌트 — 디자인 시스템에서 반복되는 형태만 클래스로 굳힌다.
-   레이아웃은 전부 Tailwind 유틸리티로 쓴다.
+   컴포넌트
    ══════════════════════════════════════════════════════════ */
 
 @layer components {
@@ -125,6 +125,12 @@
   .btn-ghost:hover:not(:disabled) {
     @apply bg-surface-sub;
   }
+  .btn-soft {
+    @apply border border-navy-line bg-navy-bg text-navy;
+  }
+  .btn-soft:hover:not(:disabled) {
+    @apply bg-navy-bg brightness-97;
+  }
   .btn-danger {
     @apply border border-red-line-strong bg-surface text-red;
   }
@@ -133,7 +139,7 @@
   }
 
   .chip {
-    @apply inline-block cursor-pointer select-none rounded-chip border border-line-chip bg-surface px-3 py-2 text-sm text-ink-2;
+    @apply inline-block cursor-pointer rounded-chip border border-line-chip bg-surface px-3 py-2 text-sm text-ink-2 select-none;
   }
   .chip:hover {
     @apply border-navy-line-hover text-navy;
@@ -157,6 +163,7 @@
     @apply border-red-line text-red;
   }
 
+  /* 카드는 최소한으로 — 목록·수행평가 카드 같은 실제 묶음에만 */
   .card {
     @apply overflow-hidden rounded-card border border-line bg-surface;
   }
@@ -177,7 +184,7 @@
     @apply rounded-box border border-red-line bg-red-bg px-6 py-5;
   }
   .notice-warn {
-    @apply rounded-box border border-amber-line bg-surface px-6 py-5;
+    @apply rounded-box border border-amber-line bg-amber-bg px-6 py-5;
   }
   .notice-info {
     @apply rounded-box border border-navy-line bg-navy-bg px-6 py-5;

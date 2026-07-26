@@ -1,34 +1,38 @@
 'use client'
 
-import { useState } from 'react'
-import { PlanHeaderTitle, Screen, StepBar } from '@/components/ui'
-import { usePlanStore } from '@/store/usePlanStore'
-import { buildDocument, documentToHtml } from '@/lib/document'
-import { HUMAN_CHECKS, validate } from '@/lib/validate'
+/**
+ * 내려받기 — 요약 + AI 초안 상태 + hwpx 다운로드.
+ *
+ * AI 초안이 없거나 입력이 바뀌었으면 generating을 먼저 거친다.
+ */
 
-/** 화면 08 · 내려받기 */
+import { useState } from 'react'
+import { ColorKey, PlanSubtitle, Screen } from '@/components/ui'
+import { usePlanStore } from '@/store/usePlanStore'
+import { validate } from '@/lib/validate'
+import { generateDraft } from '@/lib/generateClient'
+
 export function Download() {
-  const { school } = usePlanStore()
+  const { school, go, setAiDraft } = usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))
   const subject = usePlanStore((s) => {
     const p = s.plans.find((x) => x.id === s.currentPlanId)
     return p ? s.subjects.find((x) => x.id === p.subject_id) : undefined
   })
-  const [preview, setPreview] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [regen, setRegen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   if (!plan || !subject) return null
 
-  const doc = buildDocument(plan, subject, school)
   const result = validate(plan, subject, school)
-  const doneChecks = HUMAN_CHECKS.filter((c) => (plan.human_checks ?? {})[c.id]).length
   const assigned = new Set(subject.units.flatMap((u) => u.standard_codes))
-  const rubricRows = plan.performances.reduce((s, p) => s + p.rubric.length, 0)
   const perfSum = plan.performances.reduce((s, p) => s + p.ratio, 0)
   const fileName = `${subject.name}_${school.calendar.semester}학기_계획서.hwpx`
+  const ai = plan.ai
 
   const download = async () => {
+    if (!ai) return go('generating')
     setBusy(true)
     setError(null)
     setWarnings([])
@@ -36,7 +40,7 @@ export function Download() {
       const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan, subject, school }),
+        body: JSON.stringify({ plan, subject, school, ai }),
       })
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string }
@@ -59,59 +63,104 @@ export function Download() {
     }
   }
 
+  const regenerate = async () => {
+    setRegen(true)
+    setError(null)
+    try {
+      const fresh = await generateDraft(plan, subject, school, { force: true })
+      setAiDraft(fresh)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'AI 문안 재생성에 실패했습니다')
+    } finally {
+      setRegen(false)
+    }
+  }
+
   const rows: [string, string][] = [
-    [
-      '단원',
-      `${subject.units.length}개 · 성취기준 ${subject.standards.length}개 중 ${assigned.size}개 배정`,
-    ],
+    ['단원', `${subject.units.length}개 · 성취기준 ${subject.standards.length}개 중 ${assigned.size}개 배정`],
     [
       '진도',
       `${school.calendar.weeks.length}주 배분 · 정기시험 ${
         plan.exams.map((e) => `${e.week}주`).join(' / ') || '없음'
       }`,
     ],
-    ['수행평가', `${plan.performances.length}개 · ${perfSum}% · 루브릭 ${rubricRows}행`],
-    [
-      '검토',
-      `로직 ${result.passed.length}개 통과${
-        result.errors.length ? ` · 오류 ${result.errors.length}개` : ''
-      } · 직접 확인 ${doneChecks} / ${HUMAN_CHECKS.length}`,
-    ],
-    ['표', `${doc.tableCount}개 · 항목 ${doc.sections.length}개`],
+    ['수행평가', `${plan.performances.length}개 · ${perfSum}%`],
+    ['로직 검증', result.errors.length === 0 ? '15개 규칙 통과' : `오류 ${result.errors.length}개`],
   ]
 
   return (
-    <Screen
-      eyebrow="화면 08 · 내려받기"
-      title={<PlanHeaderTitle />}
-      right={<StepBar current="download" />}
-      bodyClass={`gap-8 ${preview ? 'max-w-[1200px]' : 'max-w-[820px]'}`}
-    >
-      <div className="flex flex-col gap-3.5">
-        {rows.map(([k, v], i) => (
+    <Screen title="내려받기" subtitle={<PlanSubtitle />}>
+      <div className="flex flex-col gap-3">
+        {rows.map(([k, v]) => (
           <div
             key={k}
-            className={`flex justify-between pb-3.5 text-[15px] ${
-              i < rows.length - 1 ? 'border-b border-line-soft' : ''
-            }`}
+            className="flex justify-between border-b border-line-soft pb-3 text-[15px] last:border-b-0"
           >
             <span className="text-ink-2">{k}</span>
-            <span>{v}</span>
+            <span className={k === '로직 검증' && result.errors.length > 0 ? 'text-red' : ''}>
+              {v}
+            </span>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-col gap-3.5">
-        <div className="flex flex-wrap items-center gap-4">
-          <button className="btn btn-xl" disabled={busy} onClick={download}>
+      {result.errors.length > 0 && (
+        <div className="notice-err flex items-center justify-between gap-5">
+          <span className="text-sm text-red-ink">
+            로직 오류 {result.errors.length}개를 고쳐야 내려받을 수 있습니다
+          </span>
+          <button className="btn btn-sm btn-danger shrink-0" onClick={() => go('review')}>
+            오류 보기
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3 rounded-box border border-line px-6 py-5">
+        <div className="flex items-baseline justify-between">
+          <span className="sec-title">AI 문안</span>
+          {ai && (
+            <a className="text-[13px]" onClick={() => void regenerate()}>
+              {regen ? '다시 만드는 중…' : '다시 생성'}
+            </a>
+          )}
+        </div>
+        {!ai ? (
+          <span className="text-sm text-ink-2">
+            아직 없습니다 — 내려받기를 누르면 먼저 생성합니다
+          </span>
+        ) : (
+          <>
+            <span className="text-sm text-ink-2">
+              {ai.fallback
+                ? '대체 문구 사용 (OPENROUTER_API_KEY 없음 또는 호출 실패) — 문서의 빨간 글씨는 상투 문안입니다'
+                : `${ai.model} · ${new Date(ai.created_at).toLocaleString('ko-KR')}`}
+            </span>
+            {ai.warnings.length > 0 && (
+              <div className="flex flex-col gap-1 text-[13px] text-amber-ink">
+                <span className="font-semibold text-amber">자체 점검 {ai.warnings.length}건</span>
+                {ai.warnings.map((w, i) => (
+                  <span key={i}>· {w}</span>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-4">
+          <button
+            className="btn btn-xl"
+            disabled={busy || result.errors.length > 0}
+            onClick={() => void download()}
+          >
             {busy ? '만드는 중…' : `${fileName} 내려받기`}
           </button>
-          <a className="text-sm text-ink-2" onClick={() => setPreview((v) => !v)}>
-            {preview ? '미리보기 닫기' : '미리보기'}
-          </a>
         </div>
+        <ColorKey />
         <span className="hint">
-          한글 2020 이상에서 열립니다 · 내려받은 뒤에도 이 화면에서 다시 고칠 수 있습니다
+          한글 2020 이상에서 열립니다 · 빨간 글씨(AI 초안)를 읽고 검정으로 바꾸며 검토하세요 ·
+          배경색 칸(예정시간·실시누계)은 직접 채웁니다
         </span>
         {error && <span className="text-sm text-red">{error}</span>}
         {warnings.length > 0 && (
@@ -123,14 +172,6 @@ export function Download() {
           </div>
         )}
       </div>
-
-      {preview && (
-        <iframe
-          title="계획서 미리보기"
-          srcDoc={documentToHtml(doc)}
-          className="h-[720px] w-full rounded-box border border-line bg-white"
-        />
-      )}
     </Screen>
   )
 }

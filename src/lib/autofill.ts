@@ -110,8 +110,10 @@ export function rubricFromChecks(checks: PerfMethodCheck[], maxScore: number): R
 }
 
 export interface SimpleInput {
-  /** 실시 날짜 (자유 입력) */
+  /** 실시 날짜 (자유 입력 — week가 없을 때만 해석) */
   date: string
+  /** 실시 주차 — 월주 select에서 고르면 여기로 들어온다 */
+  week?: number | null
   /** 수행평가명 */
   name: string
   /** 실시 의도 */
@@ -150,6 +152,55 @@ function pickWeek(
   return wanted ?? base
 }
 
+/**
+ * 수행평가 하나를 결정적 규칙으로 완성한다 — 간단·심화 공용.
+ *
+ * 입력: 명칭 · 실시 주차(또는 희망 주차) · 실시 의도 · 반영 비율.
+ * 나머지(방법·만점·기본점수·성취기준·루브릭 뼈대)는 전부 여기서 계산한다.
+ * 루브릭 UI 없이도 규칙 4~7이 통과하는 상태로 나온다.
+ */
+export function buildPerformance(args: {
+  id: string
+  name: string
+  intent: string
+  ratio: number
+  week: number
+  school: SchoolLayer
+  distribution: SemesterPlan['distribution']
+  units: Subject['units']
+}): Performance {
+  const { id, name, intent, ratio, week, school, distribution, units } = args
+  const { checks, method } = methodsFromIntent(intent)
+  const orderedUnits = [...units].sort((a, b) => a.order - b.order)
+
+  // 그 주까지 다룬 단원의 성취기준에서 최대 3개
+  const taughtIds = new Set(
+    Object.entries(distribution)
+      .filter(([wk]) => Number(wk) <= week)
+      .flatMap(([, ids]) => ids),
+  )
+  const codes = orderedUnits
+    .filter((u) => taughtIds.has(u.id))
+    .flatMap((u) => u.standard_codes)
+    .slice(-Math.min(3, school.rules.standards_per_perf_max))
+
+  return {
+    id,
+    name,
+    method,
+    ratio,
+    max_score: ratio, // 규칙 6
+    // 규칙 4·5 — 만점의 20% 이상 40% 미만, 1점 초과. 프롬프트가 정한 기본은 30%.
+    base_score: Math.max(2, Math.round(ratio * 0.3)),
+    week,
+    standard_codes: codes,
+    method_checks: checks,
+    activity: intent,
+    rubric: rubricFromChecks(checks, ratio), // 규칙 7 — 합이 만점과 같다
+    intent,
+  }
+}
+
 /** 간단 입력 → 학기 레이어 전체 */
 export function autofill(
   plan: SemesterPlan,
@@ -158,44 +209,25 @@ export function autofill(
   inputs: SimpleInput[],
 ): SemesterPlan {
   const distribution = distributeUnits(subject.units, school.calendar.weeks, plan.exams)
-  const orderedUnits = [...subject.units].sort((a, b) => a.order - b.order)
 
   const n = Math.max(1, inputs.length)
   const ratios = splitScore(school.rules.perf_ratio, n)
   const taken = new Set<number>()
 
   const performances: Performance[] = inputs.map((input, i) => {
-    const week = pickWeek(school, plan, weekFromDate(school, input.date), taken)
+    const wanted = input.week ?? weekFromDate(school, input.date)
+    const week = pickWeek(school, plan, wanted, taken)
     taken.add(week)
-    const { checks, method } = methodsFromIntent(input.intent)
-    const ratio = ratios[i]
-
-    // 그 주까지 다룬 단원의 성취기준에서 최대 3개
-    const taughtIds = new Set(
-      Object.entries(distribution)
-        .filter(([wk]) => Number(wk) <= week)
-        .flatMap(([, ids]) => ids),
-    )
-    const codes = orderedUnits
-      .filter((u) => taughtIds.has(u.id))
-      .flatMap((u) => u.standard_codes)
-      .slice(-Math.min(3, school.rules.standards_per_perf_max))
-
-    return {
+    return buildPerformance({
       id: `perf-auto-${i + 1}`,
       name: input.name,
-      method,
-      ratio,
-      max_score: ratio, // 규칙 6
-      // 규칙 4·5 — 만점의 20% 이상 40% 미만, 1점 초과. 프롬프트가 정한 기본은 30%.
-      base_score: Math.max(2, Math.round(ratio * 0.3)),
-      week,
-      standard_codes: codes,
-      method_checks: checks,
-      activity: input.intent,
-      rubric: rubricFromChecks(checks, ratio), // 규칙 7 — 합이 만점과 같다
       intent: input.intent,
-    }
+      ratio: ratios[i],
+      week,
+      school,
+      distribution,
+      units: subject.units,
+    })
   })
 
   // 규칙 3 — 서술·논술 합계가 하한에 못 미치면 가장 큰 영역에 서술·논술을 더한다

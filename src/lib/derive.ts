@@ -79,6 +79,19 @@ export function monthWeekLabel(school: SchoolLayer, no: number): string {
     : monthWeekByStart(school.calendar.weeks, no)
 }
 
+/**
+ * "3월 5주" → 주차 번호. 라벨 규칙이 1:1이라 전 주차 라벨과 대조하면 된다.
+ * 공백·표기 차이("3월5주")를 견딘다. 못 찾으면 null.
+ */
+export function weekNoFromMonthWeek(school: SchoolLayer, label: string): number | null {
+  const squash = (s: string) => s.replace(/\s/g, '')
+  const want = squash(label)
+  for (const w of school.calendar.weeks) {
+    if (squash(monthWeekLabel(school, w.no)) === want) return w.no
+  }
+  return null
+}
+
 /* ── 진도표 시간 ──────────────────────────────── */
 
 export interface WeekHours {
