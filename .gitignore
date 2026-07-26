@@ -1,3 +1,22 @@
+# 의존성
+node_modules/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# 환경 변수 / 비밀 정보
+.env
+.env.*
+!.env.example
+
+# 데이터베이스
+*.db
+*.db-journal
+prisma/dev.db*
+
 # OS
 .DS_Store
 Thumbs.db
@@ -8,21 +27,7 @@ desktop.ini
 .idea/
 *.swp
 
-# 환경 변수 / 비밀 정보
-.env
-.env.*
-!.env.example
-
 # 로그 / 임시 파일
 *.log
 tmp/
 temp/
-
-# 의존성 / 빌드 산출물 (스택 확정 후 정리)
-node_modules/
-dist/
-build/
-__pycache__/
-*.py[cod]
-.venv/
-venv/

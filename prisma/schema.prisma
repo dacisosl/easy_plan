@@ -1,0 +1,67 @@
+// 세 레이어를 그대로 테이블로 나눈다.
+//  학교 — 담당자가 연 1회        (전 교사 공유)
+//  과목 — 최초 1회               (교사 간 공유)
+//  학기 — 교사가 매 학기          (여기만 만지면 되도록)
+//
+// 각 레이어의 본문은 JSON 문자열로 담는다. 스키마는 src/types/index.ts가 진짜 정의이고,
+// 여기서 열을 쪼개면 두 곳을 같이 고쳐야 해서 '같은 값은 한 곳에만' 원칙이 깨진다.
+// 조회 조건으로 쓰는 값만 열로 꺼내 둔다.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model SchoolLayer {
+  id        String   @id @default(cuid())
+  year      Int
+  semester  Int
+  /// SchoolLayer 전체 (학사일정 · 규칙 · 성취도 기준표 · 문장 은행)
+  data      String
+  updatedAt DateTime @updatedAt
+
+  subjects Subject[]
+
+  @@unique([year, semester])
+}
+
+model Subject {
+  id         String  @id @default(cuid())
+  name       String
+  codePrefix String
+  type       String
+  isCommon   Boolean @default(false)
+  /// Subject 전체 (영역 · 성취기준 · 성취수준 · 단원 매핑)
+  data       String
+
+  schoolId  String
+  school    SchoolLayer @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  plans     Plan[]
+  updatedAt DateTime    @updatedAt
+
+  @@unique([schoolId, name])
+}
+
+model Plan {
+  id       String @id @default(cuid())
+  grade    Int
+  credit   Int
+  /// 간단 / 심화
+  mode     String
+  /// 6단계 중 현재 단계
+  step     Int    @default(1)
+  teachers String
+  /// SemesterPlan 전체 (정기시험 앵커 · 수행평가 · 루브릭 · 진도 배분)
+  data     String
+
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subjectId])
+}

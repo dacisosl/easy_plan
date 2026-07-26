@@ -1,0 +1,300 @@
+/**
+ * 필드 정의서(2026-07-26) 그대로 옮긴 타입.
+ *
+ * 저장 원칙
+ *  1. 값만 저장한다. 완성된 문장을 저장하지 않는다.
+ *  2. 같은 값은 한 곳에만. 나머지는 전부 참조.
+ *  3. 문단에 번호를 넣지 않는다. 가·나·다는 출력 시점에 부여.
+ *  4. 파생값은 저장하지 않는다. 필요할 때 계산.  → lib/derive.ts
+ */
+
+/** ISO 날짜 문자열 `YYYY-MM-DD`. Date 객체를 저장하지 않는다(직렬화 안정성). */
+export type ISODate = string
+
+/* ══════════════════════════════════════════════════════════
+   1. 학교 레이어 — 담당자가 연 1회 세팅. 전 교사 공유.
+   ══════════════════════════════════════════════════════════ */
+
+/** 1-1. 학사일정 — 주차 하나. label·month_week는 파생값이라 없다. */
+export interface Week {
+  /** 학기 주차 번호 (1부터) */
+  no: number
+  start: ISODate
+  end: ISODate
+  /** 진도표 '행사' 열 */
+  events: string[]
+  /** 실제 수업 가능 일수 */
+  class_days: number
+  /** 정기시험 주 여부 */
+  is_exam: boolean
+}
+
+/** 1-1. 학사일정 */
+export interface AcademicCalendar {
+  year: number
+  semester: 1 | 2
+  /** 1학기 기준 21주 */
+  weeks: Week[]
+}
+
+/** 1-2. 학교 규칙 */
+export interface SchoolRules {
+  /** Ⅲ-2-라, Ⅳ 헤더 */
+  exam_ratio: number
+  perf_ratio: number
+  /** 수행평가 한 영역 상한 (%) */
+  perf_area_max: number
+  /** 서술·논술 하한 (%) */
+  essay_min: number
+  /** 기본점수 범위 (영역 만점 대비 %) */
+  base_score_min: number
+  base_score_max: number
+  /** 나이스 입력 한도 */
+  standards_per_perf_max: number
+  /** 수행평가명 길이 */
+  perf_name_maxlen: number
+  /** 안내 주 역산 */
+  notice_lead_weeks: number
+  /** 시행 지침 명칭·연월 */
+  guideline_name: string
+  /** 학년별 반 수 */
+  classes_by_grade: Record<number, number>
+  /**
+   * 월 기준 주차 표기 방식 (미확정 항목 — 담당자 확인 필요).
+   *  'start'        : 시작일이 속한 달에서 몇 번째로 시작하는 주인지  (정의서 4-1 확정 규칙)
+   *  'form_example' : 그 달 1일이 낀 주를 1주로 두고 세기            (배포된 양식 예시)
+   * 두 방식은 같은 주라도 라벨이 한 주씩 밀린다. 6월만 우연히 일치한다.
+   */
+  month_week_rule: 'start' | 'form_example'
+}
+
+/** 1-3. 성취도 기준표 (5종) */
+export type AchievementTableId = 'common' | 'sci_lab' | 'elective' | 'arts_pe' | 'pass_fail'
+
+export interface AchievementTable {
+  id: AchievementTableId
+  /** 적용 대상 */
+  target: string
+  /** 등급 표기 */
+  grades: string[]
+  /** 부기 문구 유무 */
+  has_note: boolean
+  /** 부기 문구 본문 (has_note === false 이면 없음) */
+  note?: string
+}
+
+/** 1-4. 문장 은행 — Ⅲ · Ⅶ · Ⅷ · Ⅸ · Ⅹ 전체 */
+export type SentenceSection = 'Ⅲ-1' | 'Ⅲ-2' | 'Ⅶ' | 'Ⅷ' | 'Ⅸ' | 'Ⅹ'
+
+/** 조건식. 양식에 명시된 것 전부. `always`면 조건 없이 항상 출력. */
+export type SentenceCondition =
+  | 'always'
+  /** exam_count == 0 → Ⅲ-2-다 대체 */
+  | 'exam_count == 0'
+  /** exam_count > 0 → Ⅷ 결시표에서 '수행평가 100%' 분기 제거 */
+  | 'exam_count > 0'
+  /** credit == 1 또는 perf_ratio >= 80 → Ⅲ-2-마 제거 */
+  | 'credit > 1 && perf_ratio < 80'
+  /** 등급 미산출 과목 → Ⅲ-2-사(동점자) 제거 */
+  | 'has_rank'
+  /** subject.type == pass_fail → Ⅲ-1-나 제거, P/F 문구 추가 */
+  | 'type != pass_fail'
+  | 'type == pass_fail'
+  /** split_score_type == 고정 → Ⅲ-2-나 제거 */
+  | 'split_score_type == 추정'
+  /** subject.is_common == false → Ⅺ 최소성취수준 셀 제거 */
+  | 'is_common'
+
+export interface Sentence {
+  id: string
+  section: SentenceSection
+  /** 정렬 순서 — 번호가 아니다. 가·나·다는 출력 시점에 부여. */
+  order: number
+  /** 본문. `{과목명}` `{학년}` `{수행평가명1}` 슬롯 포함 */
+  text: string
+  /** 표시 조건식 */
+  condition: SentenceCondition
+}
+
+/** 1. 학교 레이어 전체 */
+export interface SchoolLayer {
+  calendar: AcademicCalendar
+  rules: SchoolRules
+  achievement_tables: AchievementTable[]
+  sentences: Sentence[]
+}
+
+/* ══════════════════════════════════════════════════════════
+   2. 과목 레이어 — 과목당 최초 1회. 이후 재사용 · 교사 간 공유.
+   ══════════════════════════════════════════════════════════ */
+
+export type SubjectType = AchievementTableId
+/** Ⅴ 표 자동 판정 근거 */
+export type ScaleType = 'LVL_5' | 'LVL_3'
+
+/** 2-1. 영역 — 출처: 고등학교_성취기준_2022.xlsx → 전체_성취기준 → 영역(단원) 열 */
+export interface Area {
+  /** '01' 같은 두 자리 문자열 */
+  no: string
+  name: string
+}
+
+/** 2-2. 성취기준 */
+export interface Standard {
+  /** [12현윤01-01] */
+  code: string
+  /** 성취기준 문장 */
+  text: string
+  scale_type: ScaleType
+  /** 소속 영역 */
+  area_no: string
+  /**
+   * 성취수준. 5단계는 A~E 5칸, 3단계는 상·중·하 3칸만.
+   * 3단계 과목은 Ⅺ 표에서 D·E 행을 비운다.
+   */
+  levels: Partial<Record<'A' | 'B' | 'C' | 'D' | 'E', string>>
+}
+
+/** 2-3. 단원 매핑 — 교사가 소단원명 붙여넣기 → AI 매칭 → 교사 확인 → 저장 */
+export interface Unit {
+  id: string
+  /** 진도 순서 */
+  order: number
+  /** '01. 현대인의 삶과 실천윤리' */
+  name: string
+  /** 영역 (매칭 결과). 진도표 단원명 윗줄이 여기서 파생된다. */
+  area_no: string | null
+  /** 배정된 성취기준 */
+  standard_codes: string[]
+}
+
+/** 2. 과목 레이어 */
+export interface Subject {
+  id: string
+  name: string
+  /** 성취기준 코드 접두 (예: 12현윤) */
+  code_prefix: string
+  type: SubjectType
+  is_common: boolean
+  /** Ⅱ 평가의 목적 — 원본 파일에 없다. 최초 1회 붙여넣기. */
+  objectives: string
+  /** Ⅴ 표 자동 판정 */
+  scale_type: ScaleType
+  /** Ⅰ 교수학습 운영계획 */
+  teaching_plan: string
+  areas: Area[]
+  standards: Standard[]
+  units: Unit[]
+  /** 2-4. 학기단위 성취수준 A~E 5개 */
+  semester_levels: Partial<Record<'A' | 'B' | 'C' | 'D' | 'E', string>>
+  /** 최소 성취수준 (공통과목만) */
+  min_level: string | null
+  /** 샘플 시드 데이터 여부 — xlsx 임포트로 교체되면 false */
+  seed?: boolean
+}
+
+/* ══════════════════════════════════════════════════════════
+   3. 학기 레이어 — 교사가 매 학기 입력. 여기만 만지면 되도록.
+   ══════════════════════════════════════════════════════════ */
+
+export type SplitScoreType = '추정' | '고정'
+
+/** 3-2. 정기시험 문항 구분별 배점 */
+export interface ExamPart {
+  /** 선택형 / 서술형 */
+  kind: '선택형' | '서술형'
+  /** 문항 수 */
+  count: number
+  /** 배점 합 */
+  points: number
+}
+
+export interface Exam {
+  /** 회차 */
+  no: number
+  /** 실시 주차 */
+  week: number
+  /** 마지막 단원 = 진도 배분 기준점 */
+  anchor_unit: string | null
+  parts: ExamPart[]
+}
+
+/** 3-3. 루브릭 한 수준 */
+export interface RubricLevel {
+  /** 배점 */
+  score: number
+  /** 기준 서술 */
+  text: string
+}
+
+/** 3-3. 루브릭 한 행 */
+export interface RubricRow {
+  id: string
+  /** 평가 영역 */
+  area: string
+  /** 평가 요소 */
+  element: string
+  /** 3단계 */
+  levels: RubricLevel[]
+}
+
+export type PerfMethodCheck =
+  | '서술·논술'
+  | '구술·발표'
+  | '토의·토론'
+  | '프로젝트'
+  | '실험·실습'
+  | '포트폴리오'
+  | '기타'
+
+/** 3-3. 수행평가 */
+export interface Performance {
+  id: string
+  /** 수행평가명 — 9곳 전파 */
+  name: string
+  /** 논술형 / 구술형 등 */
+  method: string
+  /** 반영 비율 (%) */
+  ratio: number
+  /** 영역 만점 */
+  max_score: number
+  /** 기본점수 */
+  base_score: number
+  /** 실시 주차 */
+  week: number
+  /** 성취기준 (6개 이하) */
+  standard_codes: string[]
+  method_checks: PerfMethodCheck[]
+  /** 수행 활동 과정 */
+  activity: string
+  rubric: RubricRow[]
+  /** 간단 작성 모드의 '실시 의도' — 방법·성취기준·루브릭이 여기서 나온다 */
+  intent?: string
+}
+
+/** 3. 학기 레이어 */
+export interface SemesterPlan {
+  id: string
+  subject_id: string
+  /** 3-1. 기본 */
+  grade: number
+  /** 학점 = 주당 시수 */
+  credit: number
+  /** 지도교사명 — 인원수가 Ⅰ 표 분할 수 결정 */
+  teachers: string[]
+  split_score_type: SplitScoreType
+  /** 3-2. 정기시험 */
+  exam_count: 0 | 1 | 2
+  exams: Exam[]
+  /** 3-3. 수행평가 */
+  performances: Performance[]
+  /** 진도 배분 결과 — 주차 번호 → 단원 id 목록. 자동 배분 후 교사가 손댄 값이라 저장한다. */
+  distribution: Record<number, string[]>
+  /** 작성 방식 */
+  mode: '간단' | '심화'
+  /** 6단계 중 현재 단계 */
+  step: number
+  /** 직접 확인 체크 결과 — 항목 id → 확인됨 */
+  human_checks: Record<string, boolean>
+  updated_at: string
+}
