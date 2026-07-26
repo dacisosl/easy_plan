@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { NextResponse } from 'next/server'
 import { renderPlan } from '@/lib/hwpx/render'
-import type { SchoolLayer, SemesterPlan, Subject } from '@/types'
+import type { AiDraft, SchoolLayer, SemesterPlan, Subject } from '@/types'
 
 export const runtime = 'nodejs'
 
@@ -17,6 +17,8 @@ interface Body {
   plan: SemesterPlan
   subject: Subject
   school: SchoolLayer
+  /** AI 초안 — 있으면 빨간 글씨로 렌더된다 */
+  ai?: AiDraft
 }
 
 export async function POST(req: Request) {
@@ -27,7 +29,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '잘못된 요청입니다' }, { status: 400 })
   }
 
-  const { plan, subject, school } = body
+  const { plan, subject, school, ai } = body
   if (!plan || !subject || !school) {
     return NextResponse.json({ error: 'plan · subject · school이 모두 필요합니다' }, { status: 400 })
   }
@@ -43,7 +45,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { bytes, report } = await renderPlan(template, plan, subject, school)
+    const { bytes, report } = await renderPlan(template, plan, subject, school, ai)
     const name = `${subject.name}_${school.calendar.semester}학기_계획서.hwpx`
     return new NextResponse(new Uint8Array(bytes) as unknown as BodyInit, {
       headers: {
