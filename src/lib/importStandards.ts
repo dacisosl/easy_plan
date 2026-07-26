@@ -12,7 +12,7 @@
  */
 
 import * as XLSX from 'xlsx'
-import type { Area, ScaleType, Standard, Subject } from '@/types'
+import type { Area, ScaleType, Standard, Subject, Unit } from '@/types'
 
 const SHEET = '전체_성취기준'
 
@@ -163,6 +163,23 @@ export function extractSubject(wb: XLSX.WorkBook, subjectName: string): Imported
 export async function readWorkbook(file: File): Promise<XLSX.WorkBook> {
   const buf = await file.arrayBuffer()
   return XLSX.read(buf, { type: 'array' })
+}
+
+/**
+ * 영역(대단원)을 단원처럼 자동 생성한다 — 소단원 목록이 없는 과목의 기본값.
+ *
+ * 영역당 단원 1개, 소속 성취기준을 전부 배정한다. 진도 배분·정기시험 앵커·
+ * 수행평가 성취기준 선정이 전부 이 단위로 그대로 돈다.
+ * 심화의 단원 매핑 화면에서 교사가 소단원으로 세분할 수 있다.
+ */
+export function unitsFromAreas(imported: Pick<ImportedSubject, 'areas' | 'standards'>): Unit[] {
+  return imported.areas.map((a, i) => ({
+    id: `u${a.no}`,
+    order: i + 1,
+    name: `${a.no}. ${a.name}`,
+    area_no: a.no,
+    standard_codes: imported.standards.filter((s) => s.area_no === a.no).map((s) => s.code),
+  }))
 }
 
 /** 임포트 결과를 기존 과목에 덮어쓴다. 단원 매핑은 코드가 살아 있는 것만 남긴다. */

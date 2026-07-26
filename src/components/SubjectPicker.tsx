@@ -1,0 +1,142 @@
+'use client'
+
+/**
+ * 과목 콤보박스 — 타이핑하면 아래로 일치 목록이 필터링되어 뜬다.
+ *
+ * 239개를 드롭다운으로 나열하지 않는다. 부분 일치(공백 무시)로 거르고,
+ * 클릭 또는 Enter로 선택한다. 목록에 없는 이름은 '직접 입력'으로 확정할 수 있다 —
+ * 성취기준 없이 시작하는 수동 과목이 된다.
+ */
+
+import { useEffect, useMemo, useRef, useState } from 'react'
+
+export function SubjectPicker({
+  value,
+  onPick,
+  placeholder = '과목명을 입력하세요',
+  autoFocus,
+}: {
+  value: string
+  /** listed = 성취기준 파일에 있는 과목인지 */
+  onPick: (name: string, listed: boolean) => void
+  placeholder?: string
+  autoFocus?: boolean
+}) {
+  const [names, setNames] = useState<string[] | null>(null)
+  const [query, setQuery] = useState(value)
+  const [open, setOpen] = useState(false)
+  const [cursor, setCursor] = useState(0)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/subjects')
+      .then((r) => r.json())
+      .then((j: { subjects?: string[] }) => {
+        if (alive) setNames(j.subjects ?? [])
+      })
+      .catch(() => {
+        if (alive) setNames([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  useEffect(() => setQuery(value), [value])
+
+  // 바깥 클릭으로 닫기
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
+
+  const squash = (s: string) => s.replace(/\s/g, '').toLowerCase()
+  const matches = useMemo(() => {
+    if (!names) return []
+    const q = squash(query)
+    if (!q) return names.slice(0, 12)
+    return names.filter((n) => squash(n).includes(q)).slice(0, 12)
+  }, [names, query])
+
+  const exact = names?.some((n) => squash(n) === squash(query)) ?? false
+
+  const pick = (name: string, listed: boolean) => {
+    setQuery(name)
+    setOpen(false)
+    onPick(name, listed)
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <input
+        className="control"
+        value={query}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          setOpen(true)
+          setCursor(0)
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (!open) return
+          if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            setCursor((c) => Math.min(c + 1, matches.length - 1))
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            setCursor((c) => Math.max(c - 1, 0))
+          } else if (e.key === 'Enter') {
+            e.preventDefault()
+            if (matches[cursor]) pick(matches[cursor], true)
+            else if (query.trim()) pick(query.trim(), false)
+          } else if (e.key === 'Escape') {
+            setOpen(false)
+          }
+        }}
+      />
+
+      {open && (query.trim() !== '' || matches.length > 0) && (
+        <div className="absolute top-full right-0 left-0 z-20 mt-1 max-h-72 overflow-y-auto rounded-control border border-line bg-white py-1">
+          {names === null && (
+            <div className="px-3 py-2 text-sm text-ink-3">과목 목록을 불러오는 중…</div>
+          )}
+          {matches.map((n, i) => (
+            <div
+              key={n}
+              className={`cursor-pointer px-3 py-2 text-sm ${
+                i === cursor ? 'bg-navy-bg text-navy' : 'hover:bg-surface-sub'
+              }`}
+              onMouseEnter={() => setCursor(i)}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                pick(n, true)
+              }}
+            >
+              {n}
+            </div>
+          ))}
+          {names !== null && query.trim() !== '' && !exact && (
+            <div
+              className="cursor-pointer border-t border-line-soft px-3 py-2 text-sm text-amber hover:bg-surface-sub"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                pick(query.trim(), false)
+              }}
+            >
+              &lsquo;{query.trim()}&rsquo; 직접 입력 — 성취기준 없이 시작
+            </div>
+          )}
+          {names !== null && matches.length === 0 && query.trim() === '' && (
+            <div className="px-3 py-2 text-sm text-ink-3">과목명을 입력하세요</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
