@@ -366,16 +366,7 @@ export function aiReview(
   return out
 }
 
-/** 5. 인간 확인 — 포커스 이동 + 확인 버튼 */
-export const HUMAN_CHECKS: { id: string; label: string }[] = [
-  { id: 'unit-match', label: '단원–성취기준 매칭 결과' },
-  { id: 'distribution', label: '진도 배분 결과' },
-  { id: 'rubric', label: '수행평가 기준 서술이 학생에게 그대로 나가도 되는 문장인지' },
-  { id: 'section-i-ii', label: 'Ⅰ 교수학습 운영계획 · Ⅱ 평가의 목적 서술' },
-  { id: 'meeting-date', label: '교과 협의록 날짜가 학교 일정과 맞는지' },
-  { id: 'teachers', label: '지도교사 이름과 담당 학급' },
-  { id: 'exam-items', label: '정기시험 문항 수와 배점' },
-  { id: 'split-score', label: '분할점수 방식이 학교 규칙과 같은지' },
-  { id: 'absent', label: '재응시·결시자 처리 문구' },
-  { id: 'appeal', label: '이의신청 기간' },
-]
+/*
+ * 인간 확인 목록(HUMAN_CHECKS)은 지웠다 — 앱 안의 체크리스트 대신
+ * hwpx의 빨간 글씨(AI 초안)와 배경색 칸(직접 채움)이 검토 장치다.
+ */

@@ -94,34 +94,10 @@ export function weekNoFromMonthWeek(school: SchoolLayer, label: string): number 
 
 /* ── 진도표 시간 ──────────────────────────────── */
 
-export interface WeekHours {
-  no: number
-  /** 예정시간 */
-  planned: number
-  /** 실시누계 */
-  cumulative: number
-}
-
-/** 온전한 한 주의 수업일 수 */
-const FULL_WEEK_DAYS = 5
-
-/**
- * 예정시간은 주당 시수(= 학점)가 기준이다. 수업일이 줄어든 주는 그만큼 줄인다.
- *
- * 필드정의서에는 `credit × class_days`로 적혀 있으나 그러면 3학점 과목이
- * 한 주에 15시간이 되어 단위가 맞지 않는다. 클로드코드 프롬프트의
- * "주당 시수 기준, 시험 주는 축소, 누계"를 따랐다.
- * 배포된 미적분Ⅰ 예시는 4일 주에도 4시간(= 학점 그대로)을 적었으니,
- * 학교 관행이 다르면 이 함수만 고치면 된다.
+/*
+ * 예정시간/실시누계 계산은 지웠다 — 문서에서 그 칸을 채우지 않기로 했다
+ * (교사가 직접, 배경색 표시만). 산식이 다시 필요하면 git 이력을 보라.
  */
-export function weekHours(weeks: Week[], credit: number): WeekHours[] {
-  let acc = 0
-  return weeks.map((w) => {
-    const planned = Math.round((credit * Math.min(w.class_days, FULL_WEEK_DAYS)) / FULL_WEEK_DAYS)
-    acc += planned
-    return { no: w.no, planned, cumulative: acc }
-  })
-}
 
 /* ── 진도 배분 ────────────────────────────────── */
 
