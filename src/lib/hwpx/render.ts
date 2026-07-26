@@ -6,7 +6,7 @@
  * 가·나·다는 여기서 처음 붙는다 — 저장된 값에는 번호가 없다.
  */
 
-import type { SchoolLayer, SemesterPlan, Subject } from '@/types'
+import type { AiDraft, SchoolLayer, SemesterPlan, Subject } from '@/types'
 import {
   achievementTableFor,
   areaRoman,
@@ -20,7 +20,6 @@ import {
   renderSection,
   rubricMax,
   scoreSumLabels,
-  weekHours,
   type SentenceContext,
 } from '@/lib/derive'
 import { HwpxDoc, childrenOf } from './doc'
@@ -29,6 +28,9 @@ export interface RenderReport {
   filled: string[]
   warnings: string[]
 }
+
+/** 교사가 직접 채울 칸의 배경색 (연노랑) */
+const FILL_ME = '#FFF3C4'
 
 const CHECK_ORDER = [
   '서술·논술',
@@ -44,6 +46,7 @@ export async function renderPlan(
   plan: SemesterPlan,
   subject: Subject,
   school: SchoolLayer,
+  ai?: AiDraft,
 ): Promise<{ bytes: Uint8Array; report: RenderReport }> {
   const doc = await HwpxDoc.load(template)
   const report: RenderReport = { filled: [], warnings: [] }
@@ -63,7 +66,6 @@ export async function renderPlan(
   const unitById = new Map(orderedUnits.map((u) => [u.id, u]))
   const areaName = (no: string | null) => subject.areas.find((a) => a.no === no)?.name ?? ''
   const stdByCode = new Map(subject.standards.map((s) => [s.code, s]))
-  const hours = weekHours(calendar.weeks, plan.credit)
 
   /* ── 표지 · 대상 학년 ─────────────────────── */
   doc.setCell(tables[0], 1, 0, [
@@ -97,7 +99,6 @@ export async function renderPlan(
       const r = i + 1
       const ids = plan.distribution[w.no] ?? []
       const units = ids.map((id) => unitById.get(id)).filter(Boolean) as typeof orderedUnits
-      const h = hours.find((x) => x.no === w.no)!
 
       // 단원명 칸은 두 줄이다 — 윗줄이 영역, 아랫줄이 단원명
       const areaLine = [...new Set(units.map((u) => u.area_no))]
@@ -111,18 +112,36 @@ export async function renderPlan(
         return s?.text ? `${c} ${s.text}` : c
       })
 
+      // 5열 = 수업 방법 및 수업·평가 연계의 주안점 (AI, 빨강) + 평가 표시(검정)
       const evals = [
         w.is_exam ? `${plan.exams.find((e) => e.week === w.no)?.no ?? ''}회 정기시험` : '',
         ...(perfAt.get(w.no)?.map((n) => `[수행평가 실시] ${n}`) ?? []),
         ...(noticeAt.get(w.no)?.map((n) => `[수행평가 안내] ${n}`) ?? []),
       ].filter(Boolean)
+      const weekly = ai?.weekly[w.no] ?? []
 
       doc.setCell(progress, r, 0, String(w.no))
       doc.setCell(progress, r, 1, periodLabel(w).replace(/–/g, '~'))
       doc.setCell(progress, r, 2, [areaLine, unitLine].filter(Boolean))
       doc.setCell(progress, r, 3, stdLines.length ? stdLines : '')
-      doc.setCell(progress, r, 4, evals.length ? evals : '')
-      doc.setCell(progress, r, 5, `${h.planned} / ${h.cumulative}`)
+      if (weekly.length > 0) {
+        // AI 주안점(빨강)과 평가 표시(검정)를 같은 칸에 문단으로 나눠 넣는다.
+        // 빨강을 쓰기 전에 원래(검정) 서식 참조를 확보해 둔다.
+        const tc = doc.cell(progress, r, 4)!
+        const sub = childrenOf(tc, 'subList')[0]
+        const blackRef = doc.charPrOf(childrenOf(sub, 'p')[0])
+        doc.setCellRed(progress, r, 4, weekly)
+        for (const line of evals) {
+          const np = childrenOf(sub, 'p')[0].cloneNode(true) as Element
+          doc.setPara(np, line, { charPrIDRef: blackRef })
+          sub.appendChild(np)
+        }
+      } else {
+        doc.setCell(progress, r, 4, evals.length ? evals : '')
+      }
+      // 예정시간/실시누계는 채우지 않는다 — 교사가 직접. 배경색으로 표시만.
+      doc.setCell(progress, r, 5, '')
+      if (!w.is_exam) doc.setCellShade(progress, r, 5, FILL_ME)
       doc.setCell(progress, r, 6, w.events.join(', ') || '-')
     })
     did(`진도표 ${calendar.weeks.length}주`)
@@ -139,40 +158,65 @@ export async function renderPlan(
     return (n as Element) ?? null
   }
 
-  const writeBody = (roman: string, nextRoman: string | null, lines: string[], label: string) => {
+  const writeBody = (
+    roman: string,
+    nextRoman: string | null,
+    lines: string[],
+    label: string,
+    opts?: { red?: boolean },
+  ) => {
     const t = sectionTable(roman)
     if (!t) return warn(`${roman} 구역 머리 표를 찾지 못했습니다`)
     const anchor = paraOf(t)
     const nextT = nextRoman ? sectionTable(nextRoman) : null
-    const stop = nextT ? paraOf(nextT) : null
+    let stop = nextT ? paraOf(nextT) : null
     if (!anchor) return warn(`${roman} 구역의 문단 위치를 찾지 못했습니다`)
     if (lines.length === 0) return
-    doc.replaceParaRun(anchor, stop, lines)
-    did(`${label} 문단 ${lines.length}개`)
+
+    // 구간 안의 ※ 안내 문단(예: Ⅰ의 '※ 단, 학사일정…')은 남긴다 — 거기서 멈춘다
+    {
+      const tops = doc.topParas()
+      const from = tops.indexOf(anchor) + 1
+      const to = stop ? tops.indexOf(stop) : tops.length
+      const note = tops.slice(from, to < 0 ? tops.length : to).find((p) =>
+        doc.paraText(p).trim().startsWith('※'),
+      )
+      if (note) stop = note
+    }
+
+    doc.replaceParaRun(anchor, stop, lines, opts)
+    did(`${label} 문단 ${lines.length}개${opts?.red ? ' (빨강)' : ''}`)
   }
 
   const numbered = (section: 'Ⅲ-1' | 'Ⅲ-2' | 'Ⅶ' | 'Ⅷ' | 'Ⅸ' | 'Ⅹ') =>
     renderSection(section, ctx).map((s) => `${s.ordinal}. ${s.text}`)
 
-  // Ⅰ 교수학습 운영계획 — 줄바꿈으로 나눈 문단들
-  writeBody(
-    'Ⅰ',
-    'Ⅱ',
-    subject.teaching_plan.split(/\n+/).map((s) => s.trim()).filter(Boolean),
-    'Ⅰ 교수학습 운영계획',
-  )
+  /** 문단 배열에 가·나·다를 붙인다 — AI 초안 출력용 */
+  const ordinated = (lines: string[]) => lines.map((s, i) => `${koOrdinal(i)}. ${s}`)
+
+  // Ⅰ 교수학습 운영계획 — AI 초안(빨강). 없으면 과목 레이어 값(검정).
+  if (ai?.sections.I.length) {
+    writeBody('Ⅰ', 'Ⅱ', ai.sections.I, 'Ⅰ 교수학습 운영계획', { red: true })
+  } else {
+    writeBody(
+      'Ⅰ',
+      'Ⅱ',
+      subject.teaching_plan.split(/\n+/).map((s) => s.trim()).filter(Boolean),
+      'Ⅰ 교수학습 운영계획',
+    )
+  }
 
   // Ⅱ 평가의 목적 — 줄마다 가·나·다
-  writeBody(
-    'Ⅱ',
-    'Ⅲ',
-    subject.objectives
-      .split(/\n+/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s, i) => `${koOrdinal(i)}. ${s}`),
-    'Ⅱ 평가의 목적',
-  )
+  if (ai?.sections.II.length) {
+    writeBody('Ⅱ', 'Ⅲ', ordinated(ai.sections.II), 'Ⅱ 평가의 목적', { red: true })
+  } else {
+    writeBody(
+      'Ⅱ',
+      'Ⅲ',
+      ordinated(subject.objectives.split(/\n+/).map((s) => s.trim()).filter(Boolean)),
+      'Ⅱ 평가의 목적',
+    )
+  }
 
   // Ⅲ은 '1. 평가의 기본 방향'과 '2. 평가의 방침' 두 묶음이다
   {
@@ -193,8 +237,18 @@ export async function renderPlan(
   }
 
   writeBody('Ⅶ', 'Ⅷ', numbered('Ⅶ'), 'Ⅶ 수행평가 시 유의 사항')
-  writeBody('Ⅸ', 'Ⅹ', numbered('Ⅸ'), 'Ⅸ 평가 결과의 활용 방안')
-  writeBody('Ⅹ', 'Ⅺ', numbered('Ⅹ'), 'Ⅹ 원격수업 운영 시 평가 계획')
+
+  // Ⅸ · Ⅹ — AI 초안(빨강). 없으면 문장 은행(검정).
+  if (ai?.sections.IX.length) {
+    writeBody('Ⅸ', 'Ⅹ', ordinated(ai.sections.IX), 'Ⅸ 평가 결과의 활용 방안', { red: true })
+  } else {
+    writeBody('Ⅸ', 'Ⅹ', numbered('Ⅸ'), 'Ⅸ 평가 결과의 활용 방안')
+  }
+  if (ai?.sections.X.length) {
+    writeBody('Ⅹ', 'Ⅺ', ordinated(ai.sections.X), 'Ⅹ 원격수업 운영 시 평가 계획', { red: true })
+  } else {
+    writeBody('Ⅹ', 'Ⅺ', numbered('Ⅹ'), 'Ⅹ 원격수업 운영 시 평가 계획')
+  }
 
   // Ⅷ은 문단 사이에 결시생 표가 끼어 있다. 표 앞뒤로 나눠 쓴다.
   {
@@ -321,7 +375,42 @@ export async function renderPlan(
       doc.setCell(gradeTbl, i + 1, 0, band)
       doc.setCell(gradeTbl, i + 1, 1, g)
     })
-    did(`Ⅴ 성취도 기준표 (${at.target})`)
+
+    // 부기 문단 가지치기 — 양식에는 조건별 ※ 문단이 전부 들어 있다.
+    // 과목 유형에 맞는 것만 남긴다. 이것이 'Ⅴ가 지저분한' 문제의 실체다.
+    {
+      const vHead = sectionTable('Ⅴ')
+      const viHead = sectionTable('Ⅵ')
+      const tops = doc.topParas()
+      const from = vHead ? tops.indexOf(paraOf(vHead)!) + 1 : -1
+      const to = viHead ? tops.indexOf(paraOf(viHead)!) : tops.length
+      if (from > 0) {
+        let pruned = 0
+        // 따옴표가 둥근따옴표(’E’)일 수 있어 종류를 가리지 않는다
+        const mark = (s: string, g: string) => new RegExp(`[''‘’]${g}[''‘’]`).test(s)
+        for (const p of tops.slice(from, to)) {
+          const s = doc.paraText(p).trim()
+          if (s === '') continue
+          const keep =
+            s.startsWith(':') || // 분할점수 문구 — 아래에서 재작성
+            (mark(s, 'E') && subject.type === 'common') ||
+            (mark(s, 'C') && (subject.type === 'sci_lab' || subject.type === 'arts_pe')) ||
+            (mark(s, 'P') && subject.type === 'pass_fail')
+          if (!keep && (s.startsWith('※') || s.startsWith('<'))) {
+            doc.remove(p)
+            pruned++
+          } else if (s.startsWith(':')) {
+            doc.setPara(
+              p,
+              `: 성취수준별 ${plan.split_score_type === '추정' ? '추정' : '고정'} 분할점수를 사용한다.`,
+            )
+          }
+        }
+        did(`Ⅴ 성취도 기준표 (${at.target}) · 부기 ${pruned}개 정리`)
+      } else {
+        did(`Ⅴ 성취도 기준표 (${at.target})`)
+      }
+    }
   } else warn('Ⅴ 성취도 기준표를 찾지 못했습니다')
 
   /* ── Ⅵ 수행평가 세부기준 ──────────────────── */
@@ -359,9 +448,12 @@ export async function renderPlan(
     plan.performances.forEach((p, i) => {
       const { tbl, title } = clones[i]
       if (title) doc.setPara(title, `${i + 1}. ${p.name}`)
-      fillPerfTable(doc, tbl, p, i, warn)
+      // AI 초안이 있으면 활동 과정·루브릭을 그것으로 (빨강)
+      const draft = ai?.perfs[p.id]
+      const effective = draft ? { ...p, activity: draft.activity, rubric: draft.rubric } : p
+      fillPerfTable(doc, tbl, effective, i, warn, { red: !!draft })
     })
-    did(`Ⅵ 수행평가 세부기준 ${plan.performances.length}벌`)
+    did(`Ⅵ 수행평가 세부기준 ${plan.performances.length}벌${ai ? ' (문안 빨강)' : ''}`)
   }
 
   /* ── Ⅺ 성취기준별 성취수준 ────────────────── */
@@ -454,13 +546,14 @@ function previousTextPara(doc: HwpxDoc, para: Element): Element | null {
   return null
 }
 
-/** 수행평가 세부기준 표 한 벌을 채운다 */
+/** 수행평가 세부기준 표 한 벌을 채운다. red = AI 문안(활동 과정·기준 서술)을 빨강으로. */
 function fillPerfTable(
   doc: HwpxDoc,
   tbl: Element,
   perf: Parameters<typeof rubricMax>[0],
   index: number,
   warn: (s: string) => void,
+  opts?: { red?: boolean },
 ): void {
   const HEAD = 4 // 0 성취기준 · 1 수행 활동 과정 · 2 평가 방법 · 3 열 머리
   const rows = doc.rows(tbl)
@@ -470,7 +563,7 @@ function fillPerfTable(
   }
 
   doc.setCell(tbl, 0, 1, perf.standard_codes.join(', ') || '')
-  doc.setCell(tbl, 1, 1, perf.activity || '')
+  doc.setCell(tbl, 1, 1, perf.activity || '', { red: opts?.red })
   doc.setCell(
     tbl,
     2,
@@ -518,9 +611,10 @@ function fillPerfTable(
     const textRow = scoreRow + 1
     // 첫 블록은 앞에 병합 셀이 하나 더 있다
     const off = i === 0 ? 1 : 0
+    // 요소명·배점은 코드가 정한 값 — 검정. 기준 서술 문장만 AI — 빨강.
     doc.setCell(tbl, scoreRow, off, row.element)
     row.levels.forEach((lv, k) => doc.setCell(tbl, scoreRow, off + 1 + k, String(lv.score)))
-    row.levels.forEach((lv, k) => doc.setCell(tbl, textRow, k, lv.text))
+    row.levels.forEach((lv, k) => doc.setCell(tbl, textRow, k, lv.text, { red: opts?.red }))
   })
 
   const remarkRow = doc.rows(tbl).length - 1

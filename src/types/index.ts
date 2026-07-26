@@ -272,6 +272,30 @@ export interface Performance {
   intent?: string
 }
 
+/**
+ * AI 초안 — export 시 hwpx에 빨간 글씨로 들어가는 문장들.
+ *
+ * AI는 문장만 쓴다. 숫자(배점·비율·요차)는 전부 코드가 정한다.
+ * 재현이 불가능한 산출물이므로 파생값 금지 원칙의 예외로 저장한다.
+ */
+export interface AiDraft {
+  /** 생성에 쓴 모델 (fallback이면 'fallback') */
+  model: string
+  created_at: string
+  /** 키가 없거나 실패해 결정적 대체 문구를 쓴 경우 */
+  fallback: boolean
+  /** 입력 지문 — 일치하면 재호출을 건너뛴다 */
+  input_hash: string
+  /** Ⅰ 교수학습 · Ⅱ 평가의 목적 · Ⅸ 활용 방안 · Ⅹ 원격수업 — 문단 배열 */
+  sections: { I: string[]; II: string[]; IX: string[]; X: string[] }
+  /** 주차 → 수업 방법 및 수업·평가 연계의 주안점 (진도표 5열) */
+  weekly: Record<number, string[]>
+  /** 수행평가 id → 활동 과정 + 루브릭(구조는 코드, text만 AI) */
+  perfs: Record<string, { activity: string; rubric: RubricRow[] }>
+  /** 생성 과정의 자체 점검 결과 (표시만, 차단하지 않음) */
+  warnings: string[]
+}
+
 /** 3. 학기 레이어 */
 export interface SemesterPlan {
   id: string
@@ -294,7 +318,12 @@ export interface SemesterPlan {
   mode: '간단' | '심화'
   /** 6단계 중 현재 단계 */
   step: number
-  /** 직접 확인 체크 결과 — 항목 id → 확인됨 */
-  human_checks: Record<string, boolean>
+  /**
+   * 직접 확인 체크 결과 — hwpx 빨간 글씨 검토 방식으로 대체되어 더는 쓰지 않는다.
+   * 구버전 저장분과의 호환을 위해 남겨 둔다.
+   */
+  human_checks?: Record<string, boolean>
+  /** AI 초안 — export 시 생성·저장 */
+  ai?: AiDraft
   updated_at: string
 }

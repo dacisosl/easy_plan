@@ -18,8 +18,11 @@ import JSZip from 'jszip'
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
 
 export const HP_NS = 'http://www.hancom.co.kr/hwpml/2011/paragraph'
+export const HH_NS = 'http://www.hancom.co.kr/hwpml/2011/head'
+export const HC_NS = 'http://www.hancom.co.kr/hwpml/2011/core'
 
 const SECTION = 'Contents/section0.xml'
+const HEADER = 'Contents/header.xml'
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
 
 /** 원본에서 무압축으로 들어 있던 항목 — 그대로 무압축으로 돌려놓는다 */
@@ -49,11 +52,18 @@ function descendants(node: Node, local: string): El[] {
 }
 
 export class HwpxDoc {
+  /** 빨강 charPr 캐시 — baseId → 새(또는 재사용) id */
+  private redCharPrCache = new Map<string, string>()
+  /** 배경 borderFill 캐시 — `${baseId}:${color}` → 새 id */
+  private shadeFillCache = new Map<string, string>()
+
   private constructor(
     private files: Map<string, Uint8Array>,
     private order: string[],
     private doc: Document,
     public sec: El,
+    /** Contents/header.xml — 서식(charPr·borderFill) 정의가 여기 있다 */
+    private headerDoc: Document,
   ) {}
 
   static async load(bytes: Uint8Array | ArrayBuffer): Promise<HwpxDoc> {
@@ -65,9 +75,13 @@ export class HwpxDoc {
       order.push(name)
       files.set(name, await zip.files[name].async('uint8array'))
     }
-    const xml = Buffer.from(files.get(SECTION)!).toString('utf8')
-    const doc = new DOMParser().parseFromString(xml, 'text/xml') as unknown as Document
-    return new HwpxDoc(files, order, doc, doc.documentElement as unknown as El)
+    const parse = (name: string) =>
+      new DOMParser().parseFromString(
+        Buffer.from(files.get(name)!).toString('utf8'),
+        'text/xml',
+      ) as unknown as Document
+    const doc = parse(SECTION)
+    return new HwpxDoc(files, order, doc, doc.documentElement as unknown as El, parse(HEADER))
   }
 
   /* ── 조회 ────────────────────────────────── */
@@ -131,38 +145,78 @@ export class HwpxDoc {
   /* ── 쓰기 ────────────────────────────────── */
 
   /**
+   * 문단이 실제로 쓰는 charPrIDRef.
+   * 문단에 run이 없으면 이웃 문단에서 상속한다 — '0'(함초롬바탕)을 박으면
+   * 그 칸만 글씨체가 어긋난다. 글씨체 통일의 핵심.
+   */
+  private inheritCharPr(p: El): string {
+    const own = childrenOf(p, 'run')[0]?.getAttribute('charPrIDRef')
+    if (own) return own
+    const parent = p.parentNode
+    if (parent) {
+      for (const sib of childrenOf(parent, 'p')) {
+        const ref = childrenOf(sib, 'run')[0]?.getAttribute('charPrIDRef')
+        if (ref) return ref
+      }
+    }
+    return '0'
+  }
+
+  /**
    * 문단의 글자를 갈아끼운다.
    *  - linesegarray를 지운다 (⑥)
    *  - <hp:t>가 있으면 첫 조각에만 넣고 나머지는 비운다 (②)
-   *  - <hp:t>가 없으면 만들어 넣는다 (③)
+   *  - <hp:t>가 없으면 만들어 넣는다 (③) — 서식은 이웃 run에서 상속
    */
-  setPara(p: El, text: string): void {
+  setPara(p: El, text: string, opts?: { charPrIDRef?: string }): void {
     for (const lsa of childrenOf(p, 'linesegarray')) p.removeChild(lsa)
 
     const ts = descendants(p, 't')
     if (ts.length > 0) {
       ts[0].textContent = text
       for (const t of ts.slice(1)) t.textContent = ''
+      if (opts?.charPrIDRef) {
+        for (const run of descendants(p, 'run')) run.setAttribute('charPrIDRef', opts.charPrIDRef)
+      }
       return
     }
 
     let run = childrenOf(p, 'run')[0]
     if (!run) {
       run = this.doc.createElementNS(HP_NS, 'hp:run')
-      run.setAttribute('charPrIDRef', '0')
+      run.setAttribute('charPrIDRef', opts?.charPrIDRef ?? this.inheritCharPr(p))
       p.insertBefore(run, p.firstChild)
+    } else if (opts?.charPrIDRef) {
+      run.setAttribute('charPrIDRef', opts.charPrIDRef)
     }
     const t = this.doc.createElementNS(HP_NS, 'hp:t')
     t.textContent = text
     run.insertBefore(t, run.firstChild)
   }
 
+  /** 문단 글자를 빨간 글씨(같은 글꼴·크기)로 넣는다 — AI 초안 표시용 */
+  setParaRed(p: El, text: string): void {
+    const base = this.inheritCharPr(p)
+    this.setPara(p, text, { charPrIDRef: this.ensureRedCharPr(base) })
+  }
+
+  /** 문단이 쓰는(또는 상속받을) charPrIDRef — 렌더러가 검정 참조를 미리 확보할 때 쓴다 */
+  charPrOf(p: El): string {
+    return this.inheritCharPr(p)
+  }
+
   /** 셀에 글자를 넣는다. 여러 줄이면 첫 문단을 깊은 복사해 서식을 유지한다 (④). */
-  setCell(tbl: El, r: number, c: number, lines: string | string[]): boolean {
+  setCell(
+    tbl: El,
+    r: number,
+    c: number,
+    lines: string | string[],
+    opts?: { red?: boolean },
+  ): boolean {
     const tc = this.cell(tbl, r, c)
     if (!tc) return false
     const list = typeof lines === 'string' ? [lines] : lines
-    if (list.length === 0) return this.setCell(tbl, r, c, '')
+    if (list.length === 0) return this.setCell(tbl, r, c, '', opts)
 
     const subs = childrenOf(tc, 'subList')
     const paras = subs.flatMap((s) => childrenOf(s, 'p'))
@@ -172,12 +226,29 @@ export class HwpxDoc {
     const sub = subs[0]
     for (const p of paras.slice(1)) p.parentNode?.removeChild(p)
 
-    this.setPara(base, list[0])
+    const write = (p: El, text: string) =>
+      opts?.red ? this.setParaRed(p, text) : this.setPara(p, text)
+
+    write(base, list[0])
     for (const extra of list.slice(1)) {
       const np = base.cloneNode(true) as El
-      this.setPara(np, extra)
+      write(np, extra)
       sub.appendChild(np)
     }
+    return true
+  }
+
+  /** 셀에 빨간 글씨로 넣는다 */
+  setCellRed(tbl: El, r: number, c: number, lines: string | string[]): boolean {
+    return this.setCell(tbl, r, c, lines, { red: true })
+  }
+
+  /** 셀 배경을 칠한다 — 교사가 직접 채울 칸 표시. 테두리는 그대로 유지된다. */
+  setCellShade(tbl: El, r: number, c: number, faceColor: string): boolean {
+    const tc = this.cell(tbl, r, c)
+    if (!tc) return false
+    const base = tc.getAttribute('borderFillIDRef') ?? '1'
+    tc.setAttribute('borderFillIDRef', this.ensureShadedBorderFill(base, faceColor))
     return true
   }
 
@@ -250,27 +321,109 @@ export class HwpxDoc {
    * `stopAt`에 닿으면 멈춘다. 서식은 첫 문단을 깊은 복사해 유지한다.
    * 비어 있는 문단은 건드리지 않고 그대로 둔다 — 문서의 여백이라서다.
    */
-  replaceParaRun(anchor: El, stopAt: El | null, lines: string[]): void {
+  replaceParaRun(anchor: El, stopAt: El | null, lines: string[], opts?: { red?: boolean }): void {
     const tops = this.topParas()
     const start = tops.indexOf(anchor) + 1
     const end = stopAt ? tops.indexOf(stopAt) : tops.length
     if (start <= 0) return
 
     const slice = tops.slice(start, end < 0 ? tops.length : end)
+    if (slice.length === 0) return
     const filled = slice.filter((p) => this.paraText(p).trim() !== '')
-    if (filled.length === 0) return
-
-    const proto = filled[0].cloneNode(true) as El
-    const parent = filled[0].parentNode!
-    const marker = filled[0]
+    // 템플릿이 문단을 ''로 비워 뒀으면 글자 있는 문단이 없다.
+    // 그 경우 구간의 첫 문단을 원형 삼아 그 앞에 끼워 넣는다.
+    const marker = filled[0] ?? slice[0]
+    const proto = marker.cloneNode(true) as El
+    const parent = marker.parentNode!
 
     // 첫 문단 자리에 새 문단들을 순서대로 끼워 넣고, 원래 글자 문단은 전부 지운다
     for (const text of lines) {
       const np = proto.cloneNode(true) as El
-      this.setPara(np, text)
+      if (opts?.red) this.setParaRed(np, text)
+      else this.setPara(np, text)
       parent.insertBefore(np, marker)
     }
     for (const p of filled) parent.removeChild(p)
+  }
+
+  /* ── header.xml 서식 (빨강 · 배경색) ───────── */
+
+  private headerList(container: string, item: string): { list: El; items: El[] } {
+    const list = descendants(this.headerDoc.documentElement as unknown as El, container)[0]
+    if (!list) throw new Error(`header.xml에 <${container}>가 없습니다`)
+    return { list, items: childrenOf(list, item) }
+  }
+
+  /**
+   * baseId charPr의 빨간 변형 id를 돌려준다.
+   * 이미 같은 서식의 빨강이 있으면 재사용하고, 없으면 복제해 목록 끝에 추가한다.
+   * itemCnt 갱신까지 여기서 한다. (charPr id는 0-based 연속 정수)
+   */
+  ensureRedCharPr(baseId: string): string {
+    const hit = this.redCharPrCache.get(baseId)
+    if (hit) return hit
+
+    const { list, items } = this.headerList('charProperties', 'charPr')
+    const base = items.find((x) => x.getAttribute('id') === baseId)
+    if (!base) return baseId // 모르는 id면 색 없이 원본 유지
+
+    if (base.getAttribute('textColor') === '#FF0000') {
+      this.redCharPrCache.set(baseId, baseId)
+      return baseId
+    }
+
+    const nextId = String(
+      items.reduce((m, x) => Math.max(m, Number(x.getAttribute('id') ?? -1)), -1) + 1,
+    )
+    const clone = base.cloneNode(true) as El
+    clone.setAttribute('id', nextId)
+    clone.setAttribute('textColor', '#FF0000')
+    list.appendChild(clone)
+    list.setAttribute('itemCnt', String(items.length + 1))
+
+    this.redCharPrCache.set(baseId, nextId)
+    return nextId
+  }
+
+  /**
+   * baseId borderFill에 배경색을 더한 변형 id를 돌려준다.
+   * 테두리 조합은 그대로 복제하고 fillBrush만 추가/교체한다.
+   * (borderFill id는 1-based)
+   */
+  ensureShadedBorderFill(baseId: string, faceColor: string): string {
+    const key = `${baseId}:${faceColor}`
+    const hit = this.shadeFillCache.get(key)
+    if (hit) return hit
+
+    const { list, items } = this.headerList('borderFills', 'borderFill')
+    const base = items.find((x) => x.getAttribute('id') === baseId)
+    if (!base) return baseId
+
+    const nextId = String(
+      items.reduce((m, x) => Math.max(m, Number(x.getAttribute('id') ?? 0)), 0) + 1,
+    )
+    const clone = base.cloneNode(true) as El
+    clone.setAttribute('id', nextId)
+
+    // 기존 fillBrush가 있으면 색만 바꾸고, 없으면 마지막 자식으로 만들어 붙인다
+    const existing = descendants(clone, 'fillBrush')[0]
+    if (existing) {
+      const win = descendants(existing, 'winBrush')[0]
+      if (win) win.setAttribute('faceColor', faceColor)
+    } else {
+      const brush = this.headerDoc.createElementNS(HC_NS, 'hc:fillBrush')
+      const win = this.headerDoc.createElementNS(HC_NS, 'hc:winBrush')
+      win.setAttribute('faceColor', faceColor)
+      win.setAttribute('hatchColor', '#999999')
+      win.setAttribute('alpha', '0')
+      brush.appendChild(win)
+      clone.appendChild(brush)
+    }
+    list.appendChild(clone)
+    list.setAttribute('itemCnt', String(items.length + 1))
+
+    this.shadeFillCache.set(key, nextId)
+    return nextId
   }
 
   /** 표만 지운다. 한 문단에 표가 둘 이상 있을 때 쓴다. */
@@ -282,9 +435,13 @@ export class HwpxDoc {
 
   async save(): Promise<Uint8Array> {
     // xmldom은 원본에 선언이 있으면 직렬화 결과에 그대로 담아 준다. 없을 때만 붙인다.
-    const serialized = new XMLSerializer().serializeToString(this.doc as never)
-    const xml = serialized.trimStart().startsWith('<?xml') ? serialized : XML_DECL + serialized
-    this.files.set(SECTION, new Uint8Array(Buffer.from(xml, 'utf8')))
+    const write = (name: string, document: Document) => {
+      const serialized = new XMLSerializer().serializeToString(document as never)
+      const xml = serialized.trimStart().startsWith('<?xml') ? serialized : XML_DECL + serialized
+      this.files.set(name, new Uint8Array(Buffer.from(xml, 'utf8')))
+    }
+    write(SECTION, this.doc)
+    write(HEADER, this.headerDoc)
 
     const out = new JSZip()
     // mimetype이 맨 앞, 무압축이어야 한글이 연다

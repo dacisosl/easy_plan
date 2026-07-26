@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import type { ReactNode } from 'react'
 import { Screen } from '@/components/ui'
@@ -22,11 +22,11 @@ export function Focus() {
     go('review')
     return null
   }
-  const done = HUMAN_CHECKS.filter((c) => plan.human_checks[c.id]).length
+  const done = HUMAN_CHECKS.filter((c) => (plan.human_checks ?? {})[c.id]).length
 
   const next = () => {
     setHumanCheck(item.id, true)
-    const remaining = HUMAN_CHECKS.findIndex((c, i) => i !== focusIndex && !plan.human_checks[c.id])
+    const remaining = HUMAN_CHECKS.findIndex((c, i) => i !== focusIndex && !(plan.human_checks ?? {})[c.id])
     if (remaining < 0) go('review')
     else setFocusIndex(remaining)
   }
@@ -47,7 +47,7 @@ export function Focus() {
           <span
             key={c.id}
             className={`h-1 flex-1 rounded-sm ${
-              plan.human_checks[c.id] ? 'bg-ink-5' : i === focusIndex ? 'bg-navy' : 'bg-line'
+              (plan.human_checks ?? {})[c.id] ? 'bg-ink-5' : i === focusIndex ? 'bg-navy' : 'bg-line'
             }`}
           />
         ))}

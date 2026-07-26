@@ -113,6 +113,29 @@ async function main() {
   }
   note(`Ⅺ 성취수준 1벌 · 블록 1개(6행) 유지 · 나머지 ${stdTables.length - 1}벌 제거`)
 
+  /* ── Ⅴ 성취율/성취도 표 — 데이터 행 비우기 + 부기 문단 확인 ── */
+  const gradeTbl = find((h) => h[0] === '성취율' && h[1] === '성취도', 'Ⅴ 성취율/성취도')
+  for (let r = 1; r < doc.rows(gradeTbl).length; r++) {
+    doc.setCell(gradeTbl, r, 0, '')
+    doc.setCell(gradeTbl, r, 1, '')
+  }
+  // 렌더러가 과목 유형별로 가지치는 부기 문단들 — 없으면 가지치기가 헛돈다.
+  // 따옴표가 둥근따옴표(’E’)라 문자 그대로 비교하지 않는다.
+  {
+    const texts = doc.topParas().map((p) => doc.paraText(p).trim())
+    for (const g of ['E', 'C', 'P'] as const) {
+      assert(
+        texts.some((t) => t.startsWith('※') && new RegExp(`[''‘’]${g}[''‘’]`).test(t)),
+        `Ⅴ 부기 문단(${g})을 찾지 못했습니다`,
+      )
+    }
+    assert(
+      texts.some((t) => t.startsWith(':') && t.includes('분할점수')),
+      'Ⅴ 분할점수 문단을 찾지 못했습니다',
+    )
+  }
+  note('Ⅴ 데이터 행 비움 · 부기 문단 4종 확인')
+
   /* ── 학기단위 성취수준 ────────────────────── */
   const semTbl = find((h) => h[0] === '성취수준' && h[1] === '학기단위 성취수준', '학기단위 성취수준')
   for (let r = 1; r < doc.rows(semTbl).length; r++) doc.setCell(semTbl, r, 1, '')

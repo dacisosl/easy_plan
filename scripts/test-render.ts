@@ -13,8 +13,64 @@ import { SCHOOL_SEED } from '../src/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '../src/data/subject'
 import { distributeUnits } from '../src/lib/derive'
 import { renderPlan } from '../src/lib/hwpx/render'
+import type { AiDraft } from '../src/types'
 
 const OUT = resolve(process.argv[2] ?? 'out/test-render.hwpx')
+
+/** 가짜 AI 초안 — 빨강·배경색 렌더 경로를 AI 없이 검증한다 */
+function fakeAiDraft(): AiDraft {
+  const weekly: AiDraft['weekly'] = {}
+  for (const w of SCHOOL_SEED.calendar.weeks) {
+    if (!w.is_exam) weekly[w.no] = [`[모둠협력수업] ${w.no}주차 쟁점 자료를 읽고 토의한다.`]
+  }
+  return {
+    model: 'fake',
+    created_at: '2026-07-26T00:00:00.000Z',
+    fallback: false,
+    input_hash: 'fake',
+    sections: {
+      I: ['쟁점 중심으로 자료 탐구와 토의, 글쓰기를 잇는다.', '지도교사 2인이 같은 기준을 적용한다.'],
+      II: ['성취기준 도달 정도를 확인한다.', '학습 개선 피드백을 제공한다.'],
+      IX: ['결과 분석을 학습 지도 계획에 반영한다.', '모니터링 결과를 다음 계획에 반영한다.'],
+      X: ['원격 전환 시 평가 일정을 심의로 조정한다.', '직접 관찰한 활동만 평가에 반영한다.'],
+    },
+    weekly,
+    perfs: Object.fromEntries(
+      PLAN_SEED.performances.map((p) => [
+        p.id,
+        {
+          activity: `[AI 초안] ${p.name}의 수행 활동 과정.`,
+          rubric:
+            p.rubric.length > 0
+              ? p.rubric
+              : [
+                  {
+                    id: 'ai-r1',
+                    area: '참여',
+                    element: '토론 참여하기',
+                    levels: [
+                      { score: 5, text: '상대 주장을 듣고 근거를 들어 반박함' },
+                      { score: 3.5, text: '자기 주장은 말하나 반응이 적음' },
+                      { score: 2, text: '발언이 거의 없음' },
+                    ],
+                  },
+                  {
+                    id: 'ai-r2',
+                    area: '표현',
+                    element: '근거 제시하기',
+                    levels: [
+                      { score: 5, text: '주장마다 근거를 붙여 말함' },
+                      { score: 3.5, text: '일부 주장에만 근거를 붙임' },
+                      { score: 2, text: '근거 없이 주장만 말함' },
+                    ],
+                  },
+                ],
+        },
+      ]),
+    ),
+    warnings: [],
+  }
+}
 
 async function main() {
   const template = new Uint8Array(await readFile(resolve('templates/plan_blank.hwpx')))
@@ -24,7 +80,8 @@ async function main() {
     distribution: distributeUnits(SUBJECT_SEED.units, SCHOOL_SEED.calendar.weeks, PLAN_SEED.exams),
   }
 
-  const { bytes, report } = await renderPlan(template, plan, SUBJECT_SEED, SCHOOL_SEED)
+  const ai = process.argv.includes('--no-ai') ? undefined : fakeAiDraft()
+  const { bytes, report } = await renderPlan(template, plan, SUBJECT_SEED, SCHOOL_SEED, ai)
 
   console.log('\n채운 것')
   for (const f of report.filled) console.log(`  ✓ ${f}`)

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import type { ReactNode } from 'react'
 import { PlanHeaderTitle, Screen } from '@/components/ui'
@@ -23,7 +23,7 @@ export function Result() {
   if (!plan || !subject) return null
 
   const result = validate(plan, subject, school)
-  const doneChecks = HUMAN_CHECKS.filter((c) => plan.human_checks[c.id]).length
+  const doneChecks = HUMAN_CHECKS.filter((c) => (plan.human_checks ?? {})[c.id]).length
   const assigned = new Set(subject.units.flatMap((u) => u.standard_codes))
   const elements = plan.performances.reduce((s, p) => s + p.rubric.length, 0)
   const levels = plan.performances.reduce(

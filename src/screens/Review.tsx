@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { Notice, PlanHeaderTitle, Screen, Section, Stat, StepBar } from '@/components/ui'
@@ -17,8 +17,8 @@ export function Review() {
   if (!plan || !subject) return null
 
   const result = validate(plan, subject, school)
-  const doneChecks = HUMAN_CHECKS.filter((c) => plan.human_checks[c.id]).length
-  const firstUnchecked = HUMAN_CHECKS.findIndex((c) => !plan.human_checks[c.id])
+  const doneChecks = HUMAN_CHECKS.filter((c) => (plan.human_checks ?? {})[c.id]).length
+  const firstUnchecked = HUMAN_CHECKS.findIndex((c) => !(plan.human_checks ?? {})[c.id])
 
   const fix = (i: Issue) => {
     if (i.target === 'performance' && i.perfId) return editPerf(i.perfId)
@@ -109,7 +109,7 @@ export function Review() {
       <Section title="직접 확인">
         <div className="list">
           {HUMAN_CHECKS.map((c, i) => {
-            const done = !!plan.human_checks[c.id]
+            const done = !!(plan.human_checks ?? {})[c.id]
             const next = i === firstUnchecked
             return (
               <div

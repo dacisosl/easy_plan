@@ -22,7 +22,7 @@ export function Download() {
 
   const doc = buildDocument(plan, subject, school)
   const result = validate(plan, subject, school)
-  const doneChecks = HUMAN_CHECKS.filter((c) => plan.human_checks[c.id]).length
+  const doneChecks = HUMAN_CHECKS.filter((c) => (plan.human_checks ?? {})[c.id]).length
   const assigned = new Set(subject.units.flatMap((u) => u.standard_codes))
   const rubricRows = plan.performances.reduce((s, p) => s + p.rubric.length, 0)
   const perfSum = plan.performances.reduce((s, p) => s + p.ratio, 0)
