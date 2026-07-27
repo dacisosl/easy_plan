@@ -77,7 +77,7 @@ npm run dev
 
 ## AI 파이프라인
 
-`/api/generate`가 스테이지 셋을 처리한다 — `sections`(Ⅰ·Ⅱ·Ⅸ·Ⅹ) · `weekly`(주차별 주안점) ·
+`/api/generate`가 스테이지 셋을 처리한다 — `sections`(Ⅰ·Ⅱ·Ⅲ-1·학기단위 성취수준) · `weekly`(주차별 주안점) ·
 `perfs`(수행 활동 + 루브릭 서술 + 자체 점검). 키는 서버에만 있다.
 
 - 루브릭은 **코드가 정한 요소·배점 뼈대**에 AI가 문장만 채운다. 행 단위로 실패를 메운다
@@ -152,7 +152,7 @@ src/
     autofill.ts   buildPerformance — 숫자는 전부 여기서
     aiDraft.ts    프롬프트 · fallback · 입력 지문 (서버 전용)
     generateClient.ts  스테이지 순차 호출 → AiDraft 조립
-    hwpx/         doc.ts(조작+서식) · render.ts(값→문서)
+    hwpx/         doc.ts(조작+서식+메모 경계) · renderForm.ts(양식 채우기)
     importStandards.ts · subjectsSource.ts(xlsx 서버 캐시)
 scripts/          verify · render:test · seed:subject · test-simple-flow · test-export-api
 templates/        form_2026.hwpx (배포된 양식 = 유일한 템플릿)
