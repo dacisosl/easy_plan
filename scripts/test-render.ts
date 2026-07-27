@@ -11,7 +11,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { SCHOOL_SEED } from '../src/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '../src/data/subject'
-import { distributeUnits } from '../src/lib/derive'
+import { distributeStandards, weeksOf } from '../src/lib/derive'
 import { renderForm } from '../src/lib/hwpx/renderForm'
 import { fallbackSections, fallbackWeekly, fallbackPerf } from '../src/lib/aiDraft'
 import type { AiDraft } from '../src/types'
@@ -21,9 +21,31 @@ const OUT = resolve(process.argv.find((a) => a.endsWith('.hwpx')) ?? 'out/test-r
 async function main() {
   const template = new Uint8Array(await readFile(resolve('templates/form_2026.hwpx')))
 
+  // --perf100 : 정기시험 없는 과목 (Ⅲ-2·Ⅳ·Ⅷ의 분기를 확인한다)
+  const perf100 = process.argv.includes('--perf100')
+  const base = perf100
+    ? {
+        ...PLAN_SEED,
+        exam_count: 0 as const,
+        exams: [],
+        exam_ratio: 0,
+        perf_ratio: 100,
+        performances: PLAN_SEED.performances.map((p, i) => ({
+          ...p,
+          ratio: i === 0 ? 60 : 40,
+          max_score: i === 0 ? 60 : 40,
+          base_score: i === 0 ? 18 : 12,
+        })),
+      }
+    : PLAN_SEED
+
   const plan = {
-    ...PLAN_SEED,
-    distribution: distributeUnits(SUBJECT_SEED.units, SCHOOL_SEED.calendar.weeks, PLAN_SEED.exams),
+    ...base,
+    distribution: distributeStandards(
+      SUBJECT_SEED,
+      weeksOf(SCHOOL_SEED, base.semester),
+      base.exams,
+    ),
   }
 
   // 결정적 fallback을 그대로 AI 초안으로 쓴다 — 모델 없이 빨강 경로를 검증한다

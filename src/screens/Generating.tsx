@@ -12,7 +12,6 @@ import { useEffect, useRef, useState } from 'react'
 import { usePlanStore } from '@/store/usePlanStore'
 import { autofill, type SimpleInput } from '@/lib/autofill'
 import { generateDraft, type GenerateProgress } from '@/lib/generateClient'
-import { validate } from '@/lib/validate'
 
 const STAGE_LABELS: { key: GenerateProgress | 'structure'; label: string; detail: string }[] = [
   { key: 'structure', label: '구조 채우기', detail: '진도 배분 · 비율 · 성취기준 · 루브릭 뼈대' },
@@ -48,7 +47,6 @@ export function Generating() {
         patchPlan({
           distribution: filled.distribution,
           performances: filled.performances,
-          step: 5,
         })
       }
 
@@ -63,9 +61,8 @@ export function Generating() {
         return
       }
 
-      // 3) 로직 오류가 있으면 검토로, 없으면 내려받기로
-      const result = validate(working, subject, school)
-      go(result.errors.length > 0 ? 'review' : 'download')
+      // 3) 내려받기로 — 로직 오류가 있으면 거기서 목록과 '고치기'가 나온다
+      go('download')
     }
     void run()
     // 한 번만

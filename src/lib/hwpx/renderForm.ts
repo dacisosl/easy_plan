@@ -12,14 +12,17 @@
 import type { AiDraft, Performance, SchoolLayer, SemesterPlan, Subject } from '@/types'
 import {
   areaRoman,
+  calendarOf,
   classRange,
   essayTotal,
   examStandardCodes,
+  isContinued,
   josa,
   monthWeekLabel,
   noticeWeek,
   periodLabel,
   rubricMax,
+  scheduledHours,
   scoreSumLabels,
   tiebreakOrder,
 } from '@/lib/derive'
@@ -31,9 +34,6 @@ export interface RenderReport {
   warnings: string[]
 }
 
-/** 교사가 직접 채울 칸의 배경색 (연노랑) */
-const FILL_ME = '#FFF3C4'
-
 const CHECK_ORDER = [
   '서술·논술',
   '구술·발표',
@@ -42,6 +42,13 @@ const CHECK_ORDER = [
   '실험·실습',
   '포트폴리오',
 ] as const
+
+/**
+ * Ⅺ 성취수준 표의 데이터 행 높이 (HWPUNIT).
+ * 양식은 글자 분량대로 제각각(1466~6317)이라 표가 들쭉날쭉하다.
+ * 두 줄이 들어가는 높이로 통일한다 — 넘치면 한글이 알아서 늘린다.
+ */
+const STD_ROW_HEIGHT = 2400
 
 /** Ⅴ 성취도 기준표 — 양식에 다섯 벌이 있고 과목 유형에 맞는 하나만 남긴다 */
 const GRADE_TABLE_FOR: Record<string, number> = {
@@ -64,14 +71,18 @@ export async function renderForm(
   const did = (s: string) => report.filled.push(s)
   const warn = (s: string) => report.warnings.push(s)
 
-  const { calendar, rules } = school
+  const { rules } = school
+  const calendar = calendarOf(school, plan.semester)
+  const weeks = calendar.weeks
+  const hours = scheduledHours(school, plan.semester, plan.credit)
   const tables = doc.topTables()
   const tops = () => doc.topParas()
 
-  const orderedUnits = [...subject.units].sort((a, b) => a.order - b.order)
-  const unitById = new Map(orderedUnits.map((u) => [u.id, u]))
   const areaName = (no: string | null) => subject.areas.find((a) => a.no === no)?.name ?? ''
   const stdByCode = new Map(subject.standards.map((s) => [s.code, s]))
+  /** 진도표 단원명 칸은 그 주 성취기준의 소속 단원에서 파생한다 */
+  const unitOfCode = (code: string) =>
+    subject.units.find((u) => u.standard_codes.includes(code)) ?? null
 
   /** 구역 머리 표(Ⅰ·Ⅱ…)를 로마자로 찾는다 */
   const sectionTable = (roman: string) =>
@@ -135,7 +146,7 @@ export async function renderForm(
     }
     const protoClone = proto.cloneNode(true) as Element
     for (const tr of rows.slice(1)) progress.removeChild(tr)
-    for (let i = 0; i < calendar.weeks.length; i++) {
+    for (let i = 0; i < weeks.length; i++) {
       progress.appendChild(protoClone.cloneNode(true) as Element)
     }
     doc.renumber(progress)
@@ -148,10 +159,13 @@ export async function renderForm(
       perfAt.set(p.week, [...(perfAt.get(p.week) ?? []), p])
     }
 
-    calendar.weeks.forEach((w, i) => {
+    weeks.forEach((w, i) => {
       const r = i + 1
-      const ids = plan.distribution[w.no] ?? []
-      const units = ids.map((id) => unitById.get(id)).filter(Boolean) as typeof orderedUnits
+      // 그 주에 배정된 성취기준만 — 단원을 통째로 펼치지 않는다
+      const codes = plan.distribution[w.no] ?? []
+      const units = [...new Set(codes.map(unitOfCode).filter(Boolean))] as NonNullable<
+        ReturnType<typeof unitOfCode>
+      >[]
 
       // 단원명 칸 — 윗줄 영역, 아랫줄 단원명
       const areaLine = [...new Set(units.map((u) => u.area_no))]
@@ -159,12 +173,12 @@ export async function renderForm(
         .join(' / ')
       const unitLine = units.map((u) => u.name).join(' / ')
 
-      const stdLines = units
-        .flatMap((u) => u.standard_codes)
-        .map((c) => {
-          const s = stdByCode.get(c)
-          return s?.text ? `${c} ${s.text}` : c
-        })
+      // 두 주에 걸친 성취기준은 뒷주에 (계속)을 붙여 반복이 아님을 드러낸다
+      const stdLines = codes.map((c) => {
+        const s = stdByCode.get(c)
+        const cont = isContinued(plan.distribution, w.no, c) ? ' (계속)' : ''
+        return (s?.text ? `${c} ${s.text}` : c) + cont
+      })
 
       // 주안점 = AI 4줄 + 수행평가 문구 (양식 메모가 요구하는 형식)
       const lines: string[] = []
@@ -173,20 +187,23 @@ export async function renderForm(
       } else {
         lines.push(...(ai?.weekly[w.no] ?? []))
       }
-      for (const p of perfAt.get(w.no) ?? []) lines.push(perfNoteLine(p.name, '실시', p.method))
-      for (const p of noticeAt.get(w.no) ?? []) lines.push(perfNoteLine(p.name, '안내', p.method))
+      for (const p of perfAt.get(w.no) ?? [])
+        lines.push(perfNoteLine(p, '실시', plan.split_score_type))
+      for (const p of noticeAt.get(w.no) ?? [])
+        lines.push(perfNoteLine(p, '안내', plan.split_score_type))
+
+      const h = hours.find((x) => x.no === w.no)
 
       doc.setCell(progress, r, 0, String(w.no))
       doc.setCell(progress, r, 1, periodLabel(w).replace(/–/g, '~'))
       doc.setCell(progress, r, 2, w.is_exam ? '' : [areaLine, unitLine].filter(Boolean))
       doc.setCell(progress, r, 3, w.is_exam ? '' : stdLines.length ? stdLines : '')
       doc.setCell(progress, r, 4, lines.length ? lines : '', { red: !w.is_exam && !!ai })
-      // 예정시간·실시누계는 교사가 직접 — 비우고 배경색만
-      doc.setCell(progress, r, 5, '')
-      doc.setCellShade(progress, r, 5, FILL_ME)
+      // 예정시간 / 실시누계 — 배포표가 있으면 그 값, 없으면 수업일수로 계산 (빨강 = 검토 대상)
+      doc.setCell(progress, r, 5, h ? [String(h.planned), String(h.cumulative)] : '', { red: true })
       doc.setCell(progress, r, 6, w.events.join(', ') || '-')
     })
-    did(`진도표 ${calendar.weeks.length}주 (1행/주로 정규화)`)
+    did(`진도표 ${weeks.length}주 (1행/주로 정규화)`)
   }
 
   /* ── Ⅰ 교수학습 운영계획 — 교사 수만큼 가로 분할 ── */
@@ -270,7 +287,7 @@ export async function renderForm(
     put(
       '라.',
       plan.exam_count > 0
-        ? `정기시험 ${rules.exam_ratio}%, 수행평가 ${rules.perf_ratio}%`
+        ? `정기시험 ${plan.exam_ratio}%, 수행평가 ${plan.perf_ratio}%`
         : '수행평가 100%',
       'Ⅲ-2 라 · 반영 비율',
     )
@@ -287,11 +304,11 @@ export async function renderForm(
   const evalTbl = tables.find((t) => doc.cellText(t, 0, 0) === '구분' && doc.rows(t).length >= 6)
   if (!evalTbl) warn('Ⅳ 평가 계획 표를 찾지 못했습니다')
   else {
-    const perExam = plan.exam_count > 0 ? rules.exam_ratio / plan.exam_count : 0
+    const perExam = plan.exam_count > 0 ? plan.exam_ratio / plan.exam_count : 0
     const examParts = plan.exams.flatMap((e) => e.parts)
     const cols = [
       ...plan.exams.map((e) => {
-        const codes = examStandardCodes(subject.units, plan.exams, e.no)
+        const codes = examStandardCodes(subject, plan.exams, e.no)
         const total = e.parts.reduce((s, p) => s + p.points, 0)
         const es = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
         return {
@@ -299,7 +316,7 @@ export async function renderForm(
           ratio: `${perExam}%`,
           essay: total > 0 ? `서술형 ${((es / total) * perExam).toFixed(0)}%` : '0%',
           std: codes.length ? `${codes[0]}~${codes[codes.length - 1]}` : '',
-          when: monthWeekLabel(school, e.week),
+          when: monthWeekLabel(school, plan.semester, e.week),
         }
       }),
       ...plan.performances.map((p) => ({
@@ -307,29 +324,65 @@ export async function renderForm(
         ratio: `${p.ratio}%`,
         essay: p.method_checks.includes('서술·논술') ? `논술형 ${p.ratio}%` : '0%',
         std: p.standard_codes.join(', '),
-        when: monthWeekLabel(school, p.week),
+        when: monthWeekLabel(school, plan.semester, p.week),
       })),
     ]
 
     // 0행 묶음 머리 + 1행 회차·수행평가명
-    doc.fillCellRed(evalTbl, 0, 2, [`${rules.exam_ratio}%`])
-    doc.fillCellRed(evalTbl, 0, 3, [`${rules.perf_ratio}%`])
+    doc.fillCellRed(evalTbl, 0, 2, [`${plan.exam_ratio}%`])
+    doc.fillCellRed(evalTbl, 0, 3, [`${plan.perf_ratio}%`])
+    // 회차·수행평가명 행 — 값이 없는 칸은 비운다 (양식의 '수행평가명1' 예시가 남지 않게)
     const titleCells = childrenOf(doc.rows(evalTbl)[1], 'tc')
-    cols.slice(0, titleCells.length).forEach((c, k) => doc.setCell(evalTbl, 1, k, c.title))
+    titleCells.forEach((_c, k) => doc.setCell(evalTbl, 1, k, cols[k]?.title ?? ''))
 
-    /** 라벨 행을 찾아 그 행의 빨간 스팬을 앞에서부터 채운다 */
-    const fillRow = (label: string, values: string[], what: string) => {
+    /**
+     * 라벨 행을 찾아 빨간 스팬을 앞에서부터 채운다.
+     *
+     * 양식의 빨간 칸은 '정기시험 2회 + 수행평가 2개' 기준으로 잡혀 있다.
+     * 값이 그보다 적으면 남는 칸에 양식 예시(수행평가명1 · 49% 같은 것)가
+     * 그대로 남아 문서로 새어 나간다 — 남는 칸은 반드시 비운다.
+     * `tail`(비고 합계)은 위치가 아니라 **마지막 칸**에 넣는다.
+     */
+    const fillRow = (label: string, values: string[], what: string, tail?: string) => {
       const ri = doc.rows(evalTbl).findIndex((_, r) =>
         childrenOf(doc.rows(evalTbl)[r], 'tc').some(
           (_c, ci) => (doc.cellText(evalTbl, r, ci) ?? '').trim() === label,
         ),
       )
       if (ri < 0) return warn(`Ⅳ '${label}' 행을 찾지 못했습니다`)
-      const reds = doc.redRuns(doc.rows(evalTbl)[ri])
-      if (reds.length < values.length) {
-        warn(`Ⅳ '${label}' 행의 빨간 칸이 ${reds.length}개인데 값은 ${values.length}개입니다`)
+
+      const cells = childrenOf(doc.rows(evalTbl)[ri], 'tc')
+      const labelAt = cells.findIndex(
+        (_c, ci) => (doc.cellText(evalTbl, ri, ci) ?? '').trim() === label,
+      )
+      const start = labelAt + 1
+      const last = cells.length - 1
+      // 비고 칸은 합계 자리다 — 값 칸에서 뺀다
+      const valueCells = tail != null ? last - start : last - start + 1
+      if (valueCells < values.length) {
+        warn(`Ⅳ '${label}' 행의 값 칸이 ${valueCells}개인데 값은 ${values.length}개입니다`)
       }
-      doc.fillRed(doc.rows(evalTbl)[ri], values)
+
+      /*
+       * 한 칸에 빨간 조각이 여럿일 수 있다 (예: 성취기준 범위 "시작 ~ 끝").
+       * 첫 조각에만 값을 넣고 나머지는 비운다.
+       * 빨간 조각이 아예 없는 칸은 양식이 검은 예시를 박아 둔 자리다
+       * (평가 시기의 정기시험 칸이 그렇다) — 그 칸은 통째로 덮어쓴다.
+       * 어느 쪽이든 남겨 두면 양식 예시가 문서로 새어 나간다.
+       */
+      for (let k = 0; k < valueCells; k++) {
+        const ci = start + k
+        const reds = doc.redRuns(cells[ci]).length
+        if (reds > 0) {
+          doc.fillCellRed(evalTbl, ri, ci, [values[k] ?? '', ...Array(reds - 1).fill('')])
+        } else {
+          doc.setCell(evalTbl, ri, ci, values[k] ?? '')
+        }
+      }
+      if (tail != null) {
+        if (doc.redRuns(cells[last]).length > 0) doc.fillCellRed(evalTbl, ri, last, [tail])
+        else doc.setCell(evalTbl, ri, last, tail)
+      }
       did(what)
     }
 
@@ -351,34 +404,15 @@ export async function renderForm(
 
     fillRow('평가 방법', methodVals, 'Ⅳ 평가 방법')
     fillRow('영역 만점', maxVals, 'Ⅳ 영역 만점')
-    fillRow('반영 비율', [...cols.map((c) => c.ratio), '100%'], 'Ⅳ 반영 비율')
+    fillRow('반영 비율', cols.map((c) => c.ratio), 'Ⅳ 반영 비율', '100%')
     fillRow(
       '서술형･논술형',
-      [...cols.map((c) => c.essay), `${essayTotal(plan, rules.exam_ratio).toFixed(0)}%`],
+      cols.map((c) => c.essay),
       'Ⅳ 서술·논술',
+      `${essayTotal(plan, plan.exam_ratio).toFixed(0)}%`,
     )
     fillRow('성취 기준', cols.map((c) => c.std), 'Ⅳ 성취기준 범위')
-    // 평가 시기는 양식이 수행평가 칸에만 빨강을 두었다 — 정기시험 칸은 따로 채운다
-    fillRow('평가 시기', plan.performances.map((p) => monthWeekLabel(school, p.week)), 'Ⅳ 평가 시기')
-    {
-      const ri = doc
-        .rows(evalTbl)
-        .findIndex((_, r) =>
-          childrenOf(doc.rows(evalTbl)[r], 'tc').some(
-            (_c, ci) => (doc.cellText(evalTbl, r, ci) ?? '').trim() === '평가 시기',
-          ),
-        )
-      if (ri > 0) {
-        const cells = childrenOf(doc.rows(evalTbl)[ri], 'tc')
-        // 라벨 다음 칸부터 정기시험 회차 시기를 채운다 (비어 있는 칸만)
-        plan.exams.forEach((e, k) => {
-          const ci = 1 + k
-          if (ci < cells.length && (doc.cellText(evalTbl, ri, ci) ?? '').trim() === '') {
-            doc.setCell(evalTbl, ri, ci, monthWeekLabel(school, e.week))
-          }
-        })
-      }
-    }
+    fillRow('평가 시기', cols.map((c) => c.when), 'Ⅳ 평가 시기')
   }
 
   /* ── Ⅴ 성취도 기준표 — 다섯 벌 중 하나만 남긴다 ── */
@@ -494,17 +528,24 @@ export async function renderForm(
         did('Ⅷ 정기시험 없음 — 가. 삭제 후 번호 당김')
       }
     }
-    // 결시생 표: 정기시험을 보면 '수행평가 100%인 경우' 행을, 아니면 '기본점수가 있는 영역' 행을 지운다
-    const absent = tables.find((t) => doc.cellText(t, 0, 0) === '구분' && doc.cellText(t, 0, 1) === '성적 처리')
-    if (absent) {
-      const drop = plan.exam_count > 0 ? '수행평가 100%' : '기본점수가 있는 영역'
+    /*
+     * 결시생 표의 '수행평가가 불가능한 신체장애 학생' 칸에는 산출식 블록이 둘 있다.
+     * 양식 메모: "정기시험을 보는 과목은 '수행평가 100%인 경우'를 삭제,
+     *            수행평가만 보는 과목은 '기본점수가 있는 영역의 경우'를 삭제"
+     * 행을 지우면 신체장애 조항 자체가 사라진다 — 셀 안 블록만 걷어낸다.
+     */
+    const absent = tables.find(
+      (t) => doc.cellText(t, 0, 0) === '구분' && doc.cellText(t, 0, 1) === '성적 처리',
+    )
+    if (!absent) warn('Ⅷ 결시생 표를 찾지 못했습니다')
+    else {
+      const drop = plan.exam_count > 0 ? '수행평가 100%인 경우' : '기본점수가 있는 영역의 경우'
       const rows = doc.rows(absent)
-      const hit = rows.findIndex((_, r) => (doc.cellText(absent, r, 1) ?? '').includes(drop))
-      if (hit > 0) {
-        absent.removeChild(rows[hit])
-        doc.renumber(absent)
-        did(`Ⅷ 결시생 표 · '${drop}' 분기 제거`)
-      }
+      const at = rows.findIndex((_, r) => (doc.cellText(absent, r, 1) ?? '').includes('기본점수'))
+      const tc = at >= 0 ? doc.cell(absent, at, 1) : null
+      if (!tc) warn("Ⅷ 결시생 표에서 '신체장애 학생' 칸을 찾지 못했습니다")
+      else if (doc.removeCellBlock(tc, drop)) did(`Ⅷ 결시생 · '${drop}' 산출식 제거 (행은 유지)`)
+      else warn(`Ⅷ 결시생 · '${drop}' 블록을 찾지 못했습니다`)
     }
   }
 
@@ -588,8 +629,12 @@ export async function renderForm(
             doc.setCell(tbl, base + k, 1, '')
           }
         })
+        // 양식은 글자 분량에 따라 행 높이가 제각각이다 — 데이터 행을 같은 높이로 맞춘다
+        doc.setRowHeights(tbl, 1, STD_ROW_HEIGHT)
       })
-      did(`Ⅺ 성취수준 ${areasWithStd.length}개 영역 · 성취기준 ${subject.standards.length}개`)
+      did(
+        `Ⅺ 성취수준 ${areasWithStd.length}개 영역 · 성취기준 ${subject.standards.length}개 (행 높이 균일)`,
+      )
     }
   }
 

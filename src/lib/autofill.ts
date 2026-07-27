@@ -7,18 +7,30 @@
  */
 
 import type { PerfMethodCheck, Performance, RubricRow, SchoolLayer, SemesterPlan, Subject } from '@/types'
-import { distributeUnits, essayTotal, parseDate, spread, teachingWeeks } from './derive'
+import {
+  calendarOf,
+  distributeStandards,
+  essayTotal,
+  parseDate,
+  spread,
+  teachingWeeks,
+  weeksOf,
+} from './derive'
 
 /** '5월 20일' 또는 '2026-05-20' → 그 날짜가 든 주차 번호 */
-export function weekFromDate(school: SchoolLayer, input: string): number | null {
+export function weekFromDate(
+  school: SchoolLayer,
+  semester: 1 | 2,
+  input: string,
+): number | null {
   const iso = input.match(/(\d{4})-(\d{2})-(\d{2})/)
   const ko = input.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/)
   let target: Date | null = null
   if (iso) target = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
-  else if (ko) target = new Date(school.calendar.year, Number(ko[1]) - 1, Number(ko[2]))
+  else if (ko) target = new Date(calendarOf(school, semester).year, Number(ko[1]) - 1, Number(ko[2]))
   if (!target) return null
 
-  for (const w of school.calendar.weeks) {
+  for (const w of weeksOf(school, semester)) {
     if (parseDate(w.start) <= target && target <= parseDate(w.end)) return w.no
   }
   return null
@@ -134,9 +146,10 @@ function pickWeek(
   taken: Set<number>,
 ): number {
   const lead = school.rules.notice_lead_weeks
+  const weeks = weeksOf(school, plan.semester)
   const lastExam = [...plan.exams].sort((a, b) => b.week - a.week)[0]
-  const limit = lastExam ? lastExam.week : school.calendar.weeks.length
-  const teaching = new Set(teachingWeeks(school.calendar.weeks).map((w) => w.no))
+  const limit = lastExam ? lastExam.week : weeks.length
+  const teaching = new Set(teachingWeeks(weeks).map((w) => w.no))
 
   const usable = (n: number) =>
     n > lead && n <= limit && teaching.has(n) && teaching.has(n - lead) && !taken.has(n)
@@ -145,7 +158,7 @@ function pickWeek(
 
   // 원하는 주에서 가까운 순서로 옮긴다
   const base = wanted ?? Math.floor(limit / 2)
-  for (let d = 1; d <= school.calendar.weeks.length; d++) {
+  for (let d = 1; d <= weeks.length; d++) {
     if (usable(base - d)) return base - d
     if (usable(base + d)) return base + d
   }
@@ -167,22 +180,16 @@ export function buildPerformance(args: {
   week: number
   school: SchoolLayer
   distribution: SemesterPlan['distribution']
-  units: Subject['units']
 }): Performance {
-  const { id, name, intent, ratio, week, school, distribution, units } = args
+  const { id, name, intent, ratio, week, school, distribution } = args
   const { checks, method } = methodsFromIntent(intent)
-  const orderedUnits = [...units].sort((a, b) => a.order - b.order)
 
-  // 그 주까지 다룬 단원의 성취기준에서 최대 3개
-  const taughtIds = new Set(
-    Object.entries(distribution)
-      .filter(([wk]) => Number(wk) <= week)
-      .flatMap(([, ids]) => ids),
-  )
-  const codes = orderedUnits
-    .filter((u) => taughtIds.has(u.id))
-    .flatMap((u) => u.standard_codes)
-    .slice(-Math.min(3, school.rules.standards_per_perf_max))
+  // 그 주까지 다룬 성취기준 중 마지막 3개 — 배분이 이미 진도 순서다
+  const taught = Object.entries(distribution)
+    .filter(([wk]) => Number(wk) <= week)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .flatMap(([, codes]) => codes)
+  const codes = [...new Set(taught)].slice(-Math.min(3, school.rules.standards_per_perf_max))
 
   return {
     id,
@@ -208,14 +215,14 @@ export function autofill(
   school: SchoolLayer,
   inputs: SimpleInput[],
 ): SemesterPlan {
-  const distribution = distributeUnits(subject.units, school.calendar.weeks, plan.exams)
+  const distribution = distributeStandards(subject, weeksOf(school, plan.semester), plan.exams)
 
   const n = Math.max(1, inputs.length)
-  const ratios = splitScore(school.rules.perf_ratio, n)
+  const ratios = splitScore(plan.perf_ratio, n)
   const taken = new Set<number>()
 
   const performances: Performance[] = inputs.map((input, i) => {
-    const wanted = input.week ?? weekFromDate(school, input.date)
+    const wanted = input.week ?? weekFromDate(school, plan.semester, input.date)
     const week = pickWeek(school, plan, wanted, taken)
     taken.add(week)
     return buildPerformance({
@@ -226,13 +233,12 @@ export function autofill(
       week,
       school,
       distribution,
-      units: subject.units,
     })
   })
 
   // 규칙 3 — 서술·논술 합계가 하한에 못 미치면 가장 큰 영역에 서술·논술을 더한다
   const draft = { ...plan, distribution, performances }
-  if (essayTotal(draft, school.rules.exam_ratio) < school.rules.essay_min) {
+  if (essayTotal(draft, plan.exam_ratio) < school.rules.essay_min) {
     const biggest = [...performances].sort((a, b) => b.ratio - a.ratio)[0]
     if (biggest && !biggest.method_checks.includes('서술·논술')) {
       biggest.method_checks = ['서술·논술', ...biggest.method_checks]
@@ -240,15 +246,7 @@ export function autofill(
     }
   }
 
-  return { ...draft, step: 6, updated_at: new Date().toISOString() }
+  return { ...draft, updated_at: new Date().toISOString() }
 }
-
-/** 화면 11의 진행 단계 */
-export const GENERATION_STAGES = [
-  { key: 'distribute', label: '진도표 배분' },
-  { key: 'design', label: '평가 설계' },
-  { key: 'rubric', label: '루브릭 작성' },
-  { key: 'sentence', label: '문장 생성' },
-] as const
 
 export { spread }

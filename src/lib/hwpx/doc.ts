@@ -275,6 +275,51 @@ export class HwpxDoc {
     return this.setCell(tbl, r, c, lines, { red: true })
   }
 
+  /**
+   * 셀 안의 조건부 블록 하나만 지운다.
+   *
+   * 결시생 표(Ⅷ)의 '신체장애 학생' 칸처럼 한 셀에 블록이 둘 들어 있고
+   * 과목 유형에 따라 하나만 남겨야 할 때 쓴다. 행을 지우면 조항 자체가
+   * 사라지므로 **행이 아니라 셀 안의 문단만** 걷어내야 한다.
+   *
+   * 블록 경계는 `-`로 시작하는 문단이다. 시작 문단부터 다음 경계 직전까지
+   * (사이에 낀 중첩 표 문단을 포함해) 지운다.
+   */
+  removeCellBlock(tc: El, startText: string): boolean {
+    const squash = (s: string) => s.replace(/\s/g, '')
+    const want = squash(startText)
+    const subs = childrenOf(tc, 'subList')
+    const paras = subs.flatMap((s) => childrenOf(s, 'p'))
+
+    const at = paras.findIndex((p) => squash(this.paraText(p)).includes(want))
+    if (at < 0) return false
+
+    let end = paras.length
+    for (let i = at + 1; i < paras.length; i++) {
+      if (/^\s*[-‐-―]/.test(this.paraText(paras[i]))) {
+        end = i
+        break
+      }
+    }
+    for (const p of paras.slice(at, end)) p.parentNode?.removeChild(p)
+    return true
+  }
+
+  /**
+   * 표의 데이터 행 높이를 같은 값으로 맞춘다 (⑤ 뒤에 부르면 안전).
+   * 세로 병합된 칸은 병합 수만큼 곱해 준다 — 안 그러면 표가 어긋난다.
+   */
+  setRowHeights(tbl: El, fromRow: number, height: number): void {
+    const trs = this.rows(tbl)
+    for (let ri = fromRow; ri < trs.length; ri++) {
+      for (const tc of childrenOf(trs[ri], 'tc')) {
+        const span = Number(childrenOf(tc, 'cellSpan')[0]?.getAttribute('rowSpan') ?? '1') || 1
+        const sz = childrenOf(tc, 'cellSz')[0]
+        if (sz) sz.setAttribute('height', String(height * span))
+      }
+    }
+  }
+
   /** 셀 배경을 칠한다 — 교사가 직접 채울 칸 표시. 테두리는 그대로 유지된다. */
   setCellShade(tbl: El, r: number, c: number, faceColor: string): boolean {
     const tc = this.cell(tbl, r, c)

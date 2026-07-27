@@ -10,10 +10,11 @@ import { useState } from 'react'
 import { ColorKey, PlanSubtitle, Screen } from '@/components/ui'
 import { usePlanStore } from '@/store/usePlanStore'
 import { validate } from '@/lib/validate'
+import { weeksOf } from '@/lib/derive'
 import { generateDraft } from '@/lib/generateClient'
 
 export function Download() {
-  const { school, go, setAiDraft } = usePlanStore()
+  const { school, go, setAiDraft, focusOn } = usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))
   const subject = usePlanStore((s) => {
     const p = s.plans.find((x) => x.id === s.currentPlanId)
@@ -28,7 +29,7 @@ export function Download() {
   const result = validate(plan, subject, school)
   const assigned = new Set(subject.units.flatMap((u) => u.standard_codes))
   const perfSum = plan.performances.reduce((s, p) => s + p.ratio, 0)
-  const fileName = `${subject.name}_${school.calendar.semester}학기_계획서.hwpx`
+  const fileName = `${subject.name}_${plan.semester}학기_계획서.hwpx`
   const ai = plan.ai
 
   const download = async () => {
@@ -80,7 +81,7 @@ export function Download() {
     ['단원', `${subject.units.length}개 · 성취기준 ${subject.standards.length}개 중 ${assigned.size}개 배정`],
     [
       '진도',
-      `${school.calendar.weeks.length}주 배분 · 정기시험 ${
+      `${weeksOf(school, plan.semester).length}주 배분 · 정기시험 ${
         plan.exams.map((e) => `${e.week}주`).join(' / ') || '없음'
       }`,
     ],
@@ -105,13 +106,25 @@ export function Download() {
       </div>
 
       {result.errors.length > 0 && (
-        <div className="notice-err flex items-center justify-between gap-5">
+        <div className="flex flex-col gap-3">
           <span className="text-sm text-red-ink">
-            로직 오류 {result.errors.length}개를 고쳐야 내려받을 수 있습니다
+            로직 오류 {result.errors.length}개를 고쳐야 내려받을 수 있습니다 — 고치기를 누르면
+            해당 입력란으로 갑니다
           </span>
-          <button className="btn btn-sm btn-danger shrink-0" onClick={() => go('review')}>
-            오류 보기
-          </button>
+          {result.errors.map((e, i) => (
+            <div key={i} className="notice-err flex items-center justify-between gap-5">
+              <div className="flex flex-col gap-1">
+                <span className="text-[15px] font-semibold text-red">{e.title}</span>
+                <span className="text-[13px] text-red-ink">{e.detail}</span>
+              </div>
+              <button
+                className="btn btn-sm btn-danger shrink-0"
+                onClick={() => focusOn(e.target ?? 'perf')}
+              >
+                고치기
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

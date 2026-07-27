@@ -5,6 +5,7 @@
  */
 
 import type {
+  AcademicCalendar,
   AchievementTable,
   AchievementTableId,
   ISODate,
@@ -13,7 +14,6 @@ import type {
   SemesterPlan,
   Sentence,
   Subject,
-  Unit,
   Week,
 } from '@/types'
 
@@ -73,31 +73,79 @@ export function monthWeekByFormExample(weeks: Week[], no: number): string {
   return `${month}월 ${idx - base + 1}주`
 }
 
-export function monthWeekLabel(school: SchoolLayer, no: number): string {
+export function monthWeekLabel(school: SchoolLayer, semester: 1 | 2, no: number): string {
+  const weeks = weeksOf(school, semester)
   return school.rules.month_week_rule === 'form_example'
-    ? monthWeekByFormExample(school.calendar.weeks, no)
-    : monthWeekByStart(school.calendar.weeks, no)
+    ? monthWeekByFormExample(weeks, no)
+    : monthWeekByStart(weeks, no)
 }
 
 /**
  * "3월 5주" → 주차 번호. 라벨 규칙이 1:1이라 전 주차 라벨과 대조하면 된다.
  * 공백·표기 차이("3월5주")를 견딘다. 못 찾으면 null.
  */
-export function weekNoFromMonthWeek(school: SchoolLayer, label: string): number | null {
+export function weekNoFromMonthWeek(
+  school: SchoolLayer,
+  semester: 1 | 2,
+  label: string,
+): number | null {
   const squash = (s: string) => s.replace(/\s/g, '')
   const want = squash(label)
-  for (const w of school.calendar.weeks) {
-    if (squash(monthWeekLabel(school, w.no)) === want) return w.no
+  for (const w of weeksOf(school, semester)) {
+    if (squash(monthWeekLabel(school, semester, w.no)) === want) return w.no
   }
   return null
 }
 
-/* ── 진도표 시간 ──────────────────────────────── */
+/* ── 학사일정 고르기 ──────────────────────────── */
 
-/*
- * 예정시간/실시누계 계산은 지웠다 — 문서에서 그 칸을 채우지 않기로 했다
- * (교사가 직접, 배경색 표시만). 산식이 다시 필요하면 git 이력을 보라.
+/** 그 학기의 학사일정. 없으면 첫 번째 것으로 떨어진다. */
+export function calendarOf(school: SchoolLayer, semester: 1 | 2): AcademicCalendar {
+  return school.calendars.find((c) => c.semester === semester) ?? school.calendars[0]
+}
+
+/** 그 학기의 주차 목록 — 가장 많이 쓰는 형태라 따로 둔다 */
+export function weeksOf(school: SchoolLayer, semester: 1 | 2): Week[] {
+  return calendarOf(school, semester).weeks
+}
+
+/* ── 진도표 예정시간 · 실시누계 ────────────────── */
+
+/** 온전한 한 주의 수업일 수 */
+const FULL_WEEK_DAYS = 5
+
+export interface WeekHours {
+  no: number
+  /** 그 주의 예정시간 */
+  planned: number
+  /** 그 주까지의 실시누계 */
+  cumulative: number
+}
+
+/**
+ * 주차별 예정시간과 누계.
+ *
+ * 학교가 배포한 표(`school.hourly_tables[credit]`)가 있으면 그 값을 쓰고,
+ * 없으면 주당 시수를 그 주 수업일수에 비례시켜 계산한다.
+ * 양식 메모7이 "주당 이수시간별로 배포해드린 표를 활용"하라고 하므로,
+ * 배포표가 들어오면 계산값을 덮는다.
  */
+export function scheduledHours(
+  school: SchoolLayer,
+  semester: 1 | 2,
+  credit: number,
+): WeekHours[] {
+  const weeks = weeksOf(school, semester)
+  const table = school.hourly_tables?.[credit]
+  let acc = 0
+  return weeks.map((w, i) => {
+    const planned =
+      table?.[i] ??
+      Math.round((credit * Math.min(w.class_days, FULL_WEEK_DAYS)) / FULL_WEEK_DAYS)
+    acc += planned
+    return { no: w.no, planned, cumulative: acc }
+  })
+}
 
 /* ── 진도 배분 ────────────────────────────────── */
 
@@ -138,66 +186,129 @@ export function spread(items: number, slots: number): number[][] {
 
 export interface Feasibility {
   ok: boolean
-  /** 주당 평균 단원 수 */
+  /** 주당 평균 성취기준 수 */
   avgPerWeek: number
-  /** 한 주에 들어가는 최대 단원 수 */
+  /** 한 주에 들어가는 최대 성취기준 수 */
   maxPerWeek: number
-  /** 단원이 하나도 안 들어가는 주 (= 여유) */
+  /** 성취기준이 하나도 안 들어가는 주 (= 복습·보충 여유) */
   slackWeeks: number
   message: string
 }
 
-/**
- * 앵커 단원을 기준으로 구간을 나누고, 각 구간의 단원을 그 구간의 수업 주에 분배한다.
- * 반환: 주차 번호 → 단원 id 목록.
- */
-export function distributeUnits(
-  units: Unit[],
-  weeks: Week[],
-  exams: { week: number; anchor_unit: string | null }[],
-): Record<number, string[]> {
-  const ordered = [...units].sort((a, b) => a.order - b.order)
-  const result: Record<number, string[]> = {}
-  if (ordered.length === 0) return result
+/** 한 주에 들어갈 수 있는 성취기준 수 상한 */
+export const MAX_PER_WEEK = 3
+/** 성취기준 하나가 걸칠 수 있는 주 수 상한 — 보통 1주, 가끔 2주 */
+export const MAX_SPAN = 2
 
-  // 앵커로 단원을 구간으로 자른다
-  const anchors = [...exams]
-    .sort((a, b) => a.week - b.week)
-    .map((e) => ordered.findIndex((u) => u.id === e.anchor_unit))
-  const examWeeks = [...exams].sort((a, b) => a.week - b.week).map((e) => e.week)
-
-  const unitSegments: Unit[][] = []
-  const weekSegments: Week[][] = []
-  let uStart = 0
-  let wStart = 0
-  const tWeeks = teachingWeeks(weeks)
-
-  for (let i = 0; i < anchors.length; i++) {
-    const a = anchors[i]
-    if (a < 0) continue
-    unitSegments.push(ordered.slice(uStart, a + 1))
-    const wEnd = tWeeks.findIndex((w) => w.no > examWeeks[i])
-    weekSegments.push(tWeeks.slice(wStart, wEnd < 0 ? tWeeks.length : wEnd))
-    uStart = a + 1
-    wStart = wEnd < 0 ? tWeeks.length : wEnd
+/** 진도 순서대로 편 성취기준 코드. 단원 순서가 진도 순서의 원천이다. */
+export function orderedStandardCodes(subject: Pick<Subject, 'units'>): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const u of [...subject.units].sort((a, b) => a.order - b.order)) {
+    for (const c of u.standard_codes) {
+      if (!seen.has(c)) {
+        seen.add(c)
+        out.push(c)
+      }
+    }
   }
-  unitSegments.push(ordered.slice(uStart))
+  return out
+}
+
+/**
+ * 성취기준 목록을 주에 배분한다.
+ *
+ *  - 주가 남으면 성취기준 하나가 최대 2주까지 걸친다. 그래도 남는 주는 비운다(복습·보충).
+ *  - 주가 모자라면 한 주에 여러 개가 들어가되 3개를 넘기지 않으려 한다.
+ *
+ * 반환: 그 구간의 주차 번호 → 성취기준 코드 목록.
+ */
+function allocateSegment(codes: string[], weeks: Week[]): Record<number, string[]> {
+  const out: Record<number, string[]> = {}
+  const n = codes.length
+  const m = weeks.length
+  if (n === 0 || m === 0) return out
+
+  if (m >= n) {
+    // 한 개씩 놓고, 남는 주를 앞에서부터 하나씩 더 준다 (최대 2주)
+    const extra = Math.min(m - n, n * (MAX_SPAN - 1))
+    let w = 0
+    for (let k = 0; k < n; k++) {
+      const span = 1 + (k < extra ? 1 : 0)
+      for (let j = 0; j < span && w < m; j++, w++) {
+        out[weeks[w].no] = [codes[k]]
+      }
+    }
+    // 남은 주는 비워 둔다 — 복습·보충 주
+    return out
+  }
+
+  // 주가 모자라면 앞 주부터 하나씩 더 얹는다
+  const base = Math.floor(n / m)
+  const rem = n % m
+  let k = 0
+  for (let s = 0; s < m; s++) {
+    const take = base + (s < rem ? 1 : 0)
+    out[weeks[s].no] = codes.slice(k, k + take)
+    k += take
+  }
+  return out
+}
+
+/**
+ * 앵커 성취기준을 기준으로 구간을 나누고, 각 구간을 그 구간의 수업 주에 배분한다.
+ * 앵커가 비어 있는 회차는 경계로 쓰지 않고 앞뒤 구간을 합친다.
+ *
+ * 반환: 주차 번호 → 성취기준 코드 목록. (파생값이지만 교사가 손댈 수 있어 학기 레이어에 저장한다)
+ */
+export function distributeStandards(
+  subject: Pick<Subject, 'units'>,
+  weeks: Week[],
+  exams: { week: number; anchor_code: string | null }[],
+): Record<number, string[]> {
+  const codes = orderedStandardCodes(subject)
+  const result: Record<number, string[]> = {}
+  if (codes.length === 0) return result
+
+  const tWeeks = teachingWeeks(weeks)
+  const sorted = [...exams].sort((a, b) => a.week - b.week)
+
+  const codeSegments: string[][] = []
+  const weekSegments: Week[][] = []
+  let cStart = 0
+  let wStart = 0
+
+  for (const e of sorted) {
+    const a = e.anchor_code ? codes.indexOf(e.anchor_code) : -1
+    if (a < cStart) continue // 앵커 미선택이거나 순서가 어긋나면 경계로 쓰지 않는다
+    const wEnd = tWeeks.findIndex((w) => w.no > e.week)
+    const wCut = wEnd < 0 ? tWeeks.length : wEnd
+    codeSegments.push(codes.slice(cStart, a + 1))
+    weekSegments.push(tWeeks.slice(wStart, wCut))
+    cStart = a + 1
+    wStart = wCut
+  }
+  codeSegments.push(codes.slice(cStart))
   weekSegments.push(tWeeks.slice(wStart))
 
-  for (let i = 0; i < unitSegments.length; i++) {
-    const us = unitSegments[i]
-    const ws = weekSegments[i] ?? []
-    if (us.length === 0 || ws.length === 0) continue
-    const layout = spread(us.length, ws.length)
-    layout.forEach((idxs, si) => {
-      result[ws[si].no] = idxs.map((k) => us[k].id)
-    })
+  for (let i = 0; i < codeSegments.length; i++) {
+    Object.assign(result, allocateSegment(codeSegments[i], weekSegments[i] ?? []))
   }
   return result
 }
 
-export function feasibility(units: Unit[], weeks: Week[]): Feasibility {
+/** 그 주의 성취기준이 앞 주에서 이어진 것인지 — 저장하지 않고 배분에서 파생한다 */
+export function isContinued(
+  distribution: Record<number, string[]>,
+  week: number,
+  code: string,
+): boolean {
+  return (distribution[week - 1] ?? []).includes(code)
+}
+
+export function feasibility(subject: Pick<Subject, 'units'>, weeks: Week[]): Feasibility {
   const tw = teachingWeeks(weeks).length
+  const n = orderedStandardCodes(subject).length
   if (tw === 0) {
     return {
       ok: false,
@@ -207,18 +318,20 @@ export function feasibility(units: Unit[], weeks: Week[]): Feasibility {
       message: '수업 가능한 주가 없습니다',
     }
   }
-  const avg = units.length / tw
-  const maxPerWeek = Math.ceil(avg)
-  const slack = Math.max(0, tw - units.length)
+  const avg = n / tw
+  const maxPerWeek = Math.max(1, Math.ceil(avg))
+  const slack = Math.max(0, tw - n * MAX_SPAN)
   return {
-    ok: units.length > 0,
+    ok: n > 0 && maxPerWeek <= MAX_PER_WEEK,
     avgPerWeek: avg,
     maxPerWeek,
     slackWeeks: slack,
     message:
-      units.length === 0
-        ? '단원이 없습니다'
-        : `주당 평균 ${avg.toFixed(1)}개 · 최대 ${maxPerWeek}개 · 남는 주 ${slack}개`,
+      n === 0
+        ? '성취기준이 없습니다'
+        : maxPerWeek > MAX_PER_WEEK
+          ? `성취기준 ${n}개를 ${tw}주에 넣으면 한 주에 ${maxPerWeek}개가 됩니다 — 학사일정을 확인하세요`
+          : `성취기준 ${n}개 · 주당 평균 ${avg.toFixed(1)}개 · 복습 여유 ${slack}주`,
   }
 }
 
@@ -318,21 +431,21 @@ export function areaRoman(areaNo: string | null): string {
 
 /** 시험별 성취기준 범위 — 앵커 단원 → 단원 → 성취기준 코드 */
 export function examStandardCodes(
-  units: Unit[],
-  exams: { no: number; anchor_unit: string | null }[],
+  subject: Pick<Subject, 'units'>,
+  exams: { no: number; anchor_code: string | null }[],
   examNo: number,
 ): string[] {
-  const ordered = [...units].sort((a, b) => a.order - b.order)
+  const codes = orderedStandardCodes(subject)
   const sorted = [...exams].sort((a, b) => a.no - b.no)
   const idx = sorted.findIndex((e) => e.no === examNo)
   if (idx < 0) return []
 
-  const endIdx = ordered.findIndex((u) => u.id === sorted[idx].anchor_unit)
-  if (endIdx < 0) return []
-  const prevAnchor = idx > 0 ? sorted[idx - 1].anchor_unit : null
-  const startIdx = prevAnchor ? ordered.findIndex((u) => u.id === prevAnchor) + 1 : 0
-
-  return ordered.slice(startIdx, endIdx + 1).flatMap((u) => u.standard_codes)
+  const end = sorted[idx].anchor_code ? codes.indexOf(sorted[idx].anchor_code!) : -1
+  if (end < 0) return []
+  // 직전 회차 앵커 다음부터가 이번 시험 범위다
+  const prev = idx > 0 ? sorted[idx - 1].anchor_code : null
+  const start = prev ? codes.indexOf(prev) + 1 : 0
+  return codes.slice(Math.max(0, start), end + 1)
 }
 
 /** 동점자 처리 순서 — 2회 → 1회 → 수행1 → 수행2 */

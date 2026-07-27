@@ -12,7 +12,13 @@ import { resolve } from 'node:path'
 import * as XLSX from 'xlsx'
 import { extractSubject, unitsFromAreas } from '../src/lib/importStandards'
 import { autofill } from '../src/lib/autofill'
-import { distributeUnits, monthWeekLabel, weekNoFromMonthWeek } from '../src/lib/derive'
+import {
+  distributeStandards,
+  monthWeekLabel,
+  orderedStandardCodes,
+  weekNoFromMonthWeek,
+  weeksOf,
+} from '../src/lib/derive'
 import { validate } from '../src/lib/validate'
 import { SCHOOL_SEED } from '../src/data/school'
 import type { SemesterPlan, Subject } from '../src/types'
@@ -41,30 +47,54 @@ async function main() {
     min_level: null,
   }
 
+  // 앵커는 성취기준 기준 — 전반부 마지막, 후반부 마지막
+  const codes = orderedStandardCodes(subject)
+  const parts = [
+    { kind: '선택형' as const, count: 20, points: 70 },
+    { kind: '서술형' as const, count: 5, points: 30 },
+  ]
   const exams: SemesterPlan['exams'] = [
-    { no: 1, week: 8, anchor_unit: units[0].id, parts: [{ kind: '선택형', count: 20, points: 70 }, { kind: '서술형', count: 5, points: 30 }] },
-    { no: 2, week: 18, anchor_unit: units[units.length - 1].id, parts: [{ kind: '선택형', count: 20, points: 70 }, { kind: '서술형', count: 5, points: 30 }] },
+    { no: 1, week: 8, anchor_code: codes[Math.floor(codes.length / 2) - 1], parts },
+    { no: 2, week: 18, anchor_code: codes[codes.length - 1], parts },
   ]
 
+  const weeks = weeksOf(SCHOOL_SEED, 1)
   const base: SemesterPlan = {
     id: 'plan-test',
     subject_id: subject.id,
     grade: 2,
     credit: 4,
+    semester: 1,
     teachers: ['테스트'],
     split_score_type: '추정',
     exam_count: 2,
+    exam_ratio: 60,
+    perf_ratio: 40,
     exams,
     performances: [],
-    distribution: distributeUnits(units, SCHOOL_SEED.calendar.weeks, exams),
-    mode: '간단',
-    step: 1,
+    distribution: distributeStandards(subject, weeks, exams),
     updated_at: new Date().toISOString(),
   }
 
+  // 배분 확인 — 주당 1~3개, 한 성취기준이 3주 이상 걸치지 않아야 한다
+  const perWeek = Object.values(base.distribution).map((c) => c.length)
+  const span = new Map<string, number>()
+  for (const cs of Object.values(base.distribution))
+    for (const c of cs) span.set(c, (span.get(c) ?? 0) + 1)
+  const maxPer = Math.max(...perWeek, 0)
+  const maxSpan = Math.max(...span.values(), 0)
+  const placed = span.size
+  console.log(
+    `배분: 성취기준 ${placed}/${codes.length} 배정 · 주당 최대 ${maxPer}개 · 한 기준 최대 ${maxSpan}주`,
+  )
+  if (maxPer > 3 || maxSpan > 2 || placed !== codes.length) {
+    console.log('  ✗ 배분 조건 위반')
+    process.exit(1)
+  }
+
   // 월주 라벨 왕복 확인
-  const label = monthWeekLabel(SCHOOL_SEED, 12)
-  const back = weekNoFromMonthWeek(SCHOOL_SEED, label)
+  const label = monthWeekLabel(SCHOOL_SEED, 1, 12)
+  const back = weekNoFromMonthWeek(SCHOOL_SEED, 1, label)
   console.log(`월주 왕복: 12주 → '${label}' → ${back}주 ${back === 12 ? '✓' : '✗'}`)
   if (back !== 12) process.exit(1)
 
@@ -75,7 +105,7 @@ async function main() {
 
   for (const p of filled.performances) {
     console.log(
-      `  ${p.name}: ${p.week}주(${monthWeekLabel(SCHOOL_SEED, p.week)}) · ${p.method} · ${p.ratio}% · 기본 ${p.base_score}점 · 성취기준 ${p.standard_codes.length} · 루브릭 ${p.rubric.length}행`,
+      `  ${p.name}: ${p.week}주(${monthWeekLabel(SCHOOL_SEED, 1, p.week)}) · ${p.method} · ${p.ratio}% · 기본 ${p.base_score}점 · 성취기준 ${p.standard_codes.length} · 루브릭 ${p.rubric.length}행`,
     )
   }
 

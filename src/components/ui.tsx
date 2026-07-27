@@ -32,6 +32,46 @@ export function Screen({
   )
 }
 
+/**
+ * 입력 구획 — 테두리로 묶어 무엇을 적는 자리인지 한눈에 보이게 한다.
+ * `id`는 오류의 '고치기'가 스크롤해 올 앵커다.
+ */
+export function Fieldset({
+  id,
+  title,
+  hint,
+  action,
+  error,
+  children,
+}: {
+  id: string
+  title: ReactNode
+  hint?: ReactNode
+  action?: ReactNode
+  /** 이 구획에 걸린 검증 오류 — 있으면 테두리가 붉어진다 */
+  error?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section
+      id={id}
+      className={`flex flex-col gap-4 rounded-box border px-6 py-5 ${
+        error ? 'border-red-line bg-red-bg/40' : 'border-line'
+      }`}
+    >
+      <div className="flex items-baseline justify-between gap-4">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-[15px] font-semibold">{title}</h2>
+          {hint && <span className="text-[13px] text-ink-3">{hint}</span>}
+        </div>
+        {action}
+      </div>
+      {children}
+      {error && <div className="text-[13px] text-red">{error}</div>}
+    </section>
+  )
+}
+
 /** 과목 · 학년 · 학점 부제 */
 export function PlanSubtitle() {
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))

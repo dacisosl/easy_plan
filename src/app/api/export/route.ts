@@ -1,4 +1,4 @@
-﻿/**
+/**
  * POST /api/export — 값을 받아 완성된 hwpx를 돌려준다.
  *
  * hwpx 조립은 서버에서만 한다. @xmldom/xmldom과 jszip이 노드 전용이고,
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
   try {
     const { bytes, report } = await renderForm(template, plan, subject, school, ai)
-    const name = `${subject.name}_${school.calendar.semester}학기_계획서.hwpx`
+    const name = `${subject.name}_${plan.semester}학기_계획서.hwpx`
     return new NextResponse(new Uint8Array(bytes) as unknown as BodyInit, {
       headers: {
         'Content-Type': 'application/hwp+zip',

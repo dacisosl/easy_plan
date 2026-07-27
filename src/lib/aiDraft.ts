@@ -17,6 +17,7 @@ import type {
   Subject,
 } from '@/types'
 import { rubricFromChecks } from './autofill'
+import { isContinued, weeksOf } from './derive'
 
 export type GenerateStage = 'sections' | 'weekly' | 'perfs'
 export const STAGES: GenerateStage[] = ['sections', 'weekly', 'perfs']
@@ -29,9 +30,11 @@ export function inputHash(plan: SemesterPlan, subject: Subject): string {
     subject: subject.name,
     grade: plan.grade,
     credit: plan.credit,
+    semester: plan.semester,
+    ratios: [plan.exam_ratio, plan.perf_ratio],
     units: subject.units.map((u) => [u.order, u.name, u.standard_codes]),
     distribution: plan.distribution,
-    exams: plan.exams.map((e) => [e.no, e.week, e.anchor_unit]),
+    exams: plan.exams.map((e) => [e.no, e.week, e.anchor_code]),
     performances: plan.performances.map((p) => [
       p.id,
       p.name,
@@ -101,12 +104,36 @@ export function fallbackSections(
  *   -활동 둘
  *   [평가유형] 그 차시의 평가 내용
  */
+/**
+ * 성취기준 문장을 활동 문구로 바꾼다.
+ * "…을 이해하고, …을 탐구할 수 있다." → ["…을 이해하기", "…을 탐구하기"]
+ *
+ * 어미만 갈아끼우고 못 바꾸면 원문을 그대로 쓴다.
+ * 어차피 문서에서 빨간 글씨라 교사가 손보는 자리다.
+ */
+export function activityClauses(text: string): string[] {
+  const body = text.trim().replace(/\s*\.$/, '')
+  if (!body) return []
+  return body
+    .split(/,\s*/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((c) =>
+      c
+        .replace(/할 수 있다$/, '하기')
+        .replace(/될 수 있다$/, '되기')
+        .replace(/한다$/, '하기')
+        .replace(/된다$/, '되기')
+        .replace(/(하|되)(고|며|여|어)$/, '$1기'),
+    )
+}
+
 export function fallbackWeekly(
   plan: SemesterPlan,
   subject: Subject,
   school: SchoolLayer,
 ): AiDraft['weekly'] {
-  const unitById = new Map(subject.units.map((u) => [u.id, u]))
+  const stdByCode = new Map(subject.standards.map((s) => [s.code, s]))
   const out: AiDraft['weekly'] = {}
   const rotate = ['[강의식, 모둠협력수업]', '[문제해결학습, 모둠협력수업]', '[탐구학습, 발표활동]']
   const evals = [
@@ -115,32 +142,56 @@ export function fallbackWeekly(
     '[동료평가, 관찰평가] 경청과 공감적 반응 태도를 성찰하는 체크리스트 작성',
   ]
   let i = 0
-  for (const w of school.calendar.weeks) {
+  for (const w of weeksOf(school, plan.semester)) {
     if (w.is_exam) continue
-    const units = (plan.distribution[w.no] ?? []).map((id) => unitById.get(id)).filter(Boolean)
-    if (units.length === 0) continue
-    const names = units.map((u) => u!.name.replace(/^\d+\.\s*/, ''))
-    // 조사(와/과)를 붙이면 단원명 끝소리에 따라 틀린다 — 조사가 필요 없게 쓴다
-    out[w.no] = [
-      rotate[i % rotate.length],
-      `-${names[0]}의 핵심 개념과 용어 파악하기`,
-      `-${names[names.length - 1]} 관련 사례를 찾아 분석하기`,
-      evals[i % evals.length],
-    ]
+    const codes = plan.distribution[w.no] ?? []
+
+    // 성취기준이 없는 주 — 복습·보충으로 채운다 (빈 칸으로 두지 않는다)
+    if (codes.length === 0) {
+      out[w.no] = ['[문제해결학습]', '-앞 차시 내용 복습하기', '-미도달 학생 보충 지도하기']
+      continue
+    }
+
+    const lines: string[] = [rotate[i % rotate.length]]
+    for (const code of codes) {
+      const std = stdByCode.get(code)
+      const clauses = std?.text ? activityClauses(std.text) : []
+      if (clauses.length === 0) {
+        lines.push(`-${code} 관련 내용 다루기`)
+        continue
+      }
+      // 두 주에 걸친 성취기준이면 뒷주에는 뒷절을 쓴다 — 같은 문장이 반복되지 않게
+      const cont = isContinued(plan.distribution, w.no, code)
+      const pick = cont ? clauses.slice(1) : clauses.slice(0, 2)
+      for (const c of (pick.length > 0 ? pick : clauses).slice(0, 2)) lines.push(`-${c}`)
+    }
+    lines.push(evals[i % evals.length])
+    out[w.no] = lines
     i++
   }
   return out
 }
 
 /**
- * 수행평가가 잡힌 주에 넣는 줄 — 양식 메모가 요구하는 형식.
- *   [수행평가(수행평가명)] 간단설명
- * 안내 주에는 공지 문구를 넣는다.
+ * 수행평가가 잡힌 주에 넣는 줄 — 양식 메모(memo36·37)가 요구하는 형식.
+ *
+ *   실시: `[수행평가(수행평가명)] 간단설명`
+ *   안내: `[수행평가(수행평가명) 추정분할점수 공지]`
+ *
+ * 간단설명은 실시 의도의 첫 절을 활동 문구로 바꿔 쓴다. 없으면 방법으로 떨어진다.
  */
-export function perfNoteLine(perfName: string, kind: '실시' | '안내', method: string): string {
-  return kind === '실시'
-    ? `[수행평가(${perfName})] ${method} 평가 실시`
-    : `[수행평가(${perfName}) 추정분할점수 공지] 평가 기준과 배점 안내`
+export function perfNoteLine(
+  perf: Pick<Performance, 'name' | 'method' | 'intent' | 'activity'>,
+  kind: '실시' | '안내',
+  splitType: SemesterPlan['split_score_type'] = '추정',
+): string {
+  if (kind === '안내') {
+    return `[수행평가(${perf.name}) ${splitType}분할점수 공지]`
+  }
+  const source = (perf.intent ?? perf.activity ?? '').trim()
+  const brief = source ? (activityClauses(source)[0] ?? source) : ''
+  const tail = brief.length > 0 ? brief.slice(0, 40) : `${perf.method} 평가 실시`
+  return `[수행평가(${perf.name})] ${tail}`
 }
 
 export function fallbackPerf(perf: Performance): { activity: string; rubric: RubricRow[] } {
@@ -190,15 +241,23 @@ export function weeklyPrompt(
   subject: Subject,
   school: SchoolLayer,
 ): { system: string; user: string } {
-  const unitById = new Map(subject.units.map((u) => [u.id, u]))
   const stdByCode = new Map(subject.standards.map((s) => [s.code, s]))
-  const weeks = school.calendar.weeks
+  const areaOf = (code: string) => {
+    const no = subject.standards.find((s) => s.code === code)?.area_no
+    return subject.areas.find((a) => a.no === no)?.name ?? ''
+  }
+  const weeks = weeksOf(school, plan.semester)
     .filter((w) => !w.is_exam && (plan.distribution[w.no] ?? []).length > 0)
     .map((w) => {
-      const units = (plan.distribution[w.no] ?? []).map((id) => unitById.get(id)!).filter(Boolean)
-      const codes = units.flatMap((u) => u.standard_codes)
-      const stds = codes.map((c) => `${c} ${stdByCode.get(c)?.text ?? ''}`.trim()).join(' / ')
-      return `${w.no}주: 단원 [${units.map((u) => u.name).join(', ')}] 성취기준 [${stds || '없음'}]`
+      const codes = plan.distribution[w.no] ?? []
+      const stds = codes
+        .map((c) => {
+          const cont = isContinued(plan.distribution, w.no, c) ? ' (전주에서 이어짐)' : ''
+          return `${c} ${stdByCode.get(c)?.text ?? ''}${cont}`.trim()
+        })
+        .join(' / ')
+      const areas = [...new Set(codes.map(areaOf).filter(Boolean))].join(', ')
+      return `${w.no}주: 영역 [${areas || '—'}] 성취기준 [${stds || '없음'}]`
     })
   return {
     system:
@@ -210,7 +269,8 @@ export function weeklyPrompt(
       `  4줄: 대괄호로 평가 유형 뒤에 그 차시 평가 내용 — 관찰평가 · 형성평가 · 자기평가 · 동료평가 중. 예 "[형성평가] 동서양 윤리 확인 퀴즈 활동"\n` +
       `분량은 예시와 같은 정도로 맞춘다:\n` +
       `[강의식, 모둠협력수업]\n-이론 윤리학, 실천 윤리학, 메타윤리학의 성격과 특징 파악하기\n-인간 본성에 대한 다양한 관점 분석하기\n[관찰평가] 윤리적 딜레마 속 도덕적 행동의 정당화와 관련된 토의활동 및 관찰 평가\n` +
-      `그 주 성취기준에 없는 내용을 넣지 않는다. 수행평가 문구는 코드가 따로 붙이니 쓰지 않는다.`,
+      `그 주 성취기준에 없는 내용을 넣지 않는다. 수행평가 문구는 코드가 따로 붙이니 쓰지 않는다.\n` +
+      `'(전주에서 이어짐)'으로 표시된 성취기준은 앞 주와 다른 활동을 써서 같은 문장이 반복되지 않게 한다.`,
     user: `과목: ${subject.name}\n\n${weeks.join('\n')}`,
   }
 }

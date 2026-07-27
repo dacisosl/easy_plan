@@ -3,43 +3,32 @@
 import { usePlanStore } from '@/store/usePlanStore'
 import { AppHeader } from '@/components/AppHeader'
 import { Home } from '@/screens/Home'
-import { Setup } from '@/screens/Setup'
-import { Units } from '@/screens/Units'
-import { Schedule } from '@/screens/Schedule'
-import { Performances } from '@/screens/Performances'
-import { Review } from '@/screens/Review'
-import { Download } from '@/screens/Download'
 import { Generating } from '@/screens/Generating'
+import { Download } from '@/screens/Download'
+import { Admin } from '@/screens/Admin'
 
 export default function Page() {
   const { screen, currentPlanId } = usePlanStore()
 
   const body = () => {
-    if (screen !== 'home' && !currentPlanId) return <Home />
+    // 계획서가 없는데 작성 화면으로 들어오면 홈으로 되돌린다
+    if (!currentPlanId && screen !== 'home' && screen !== 'admin') return <Home />
     switch (screen) {
-      case 'home':
-        return <Home />
-      case 'setup':
-        return <Setup />
-      case 'units':
-        return <Units />
-      case 'schedule':
-        return <Schedule />
-      case 'performances':
-        return <Performances />
-      case 'review':
-        return <Review />
-      case 'download':
-        return <Download />
       case 'generating':
         return <Generating />
+      case 'download':
+        return <Download />
+      case 'admin':
+        return <Admin />
+      default:
+        return <Home />
     }
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-white">
       <AppHeader />
-      <main className="px-6 pt-10 pb-24">{body()}</main>
+      <main className="mx-auto max-w-[1200px] px-6 pt-8 pb-24">{body()}</main>
     </div>
   )
 }

@@ -116,12 +116,24 @@ export interface Sentence {
   condition: SentenceCondition
 }
 
+/**
+ * 홈의 입력 구획 — 검증 오류가 '고치기'로 데려갈 자리.
+ * 화면이 한 장이라 화면 이름이 아니라 구획 이름이다.
+ */
+export type FocusTarget = 'basic' | 'exam' | 'anchor' | 'perf' | 'essay'
+
 /** 1. 학교 레이어 전체 */
 export interface SchoolLayer {
-  calendar: AcademicCalendar
+  /** 학기별 학사일정 — [1학기, 2학기]. 관리자 모드에서 편집한다. */
+  calendars: AcademicCalendar[]
   rules: SchoolRules
   achievement_tables: AchievementTable[]
   sentences: Sentence[]
+  /**
+   * 주당 이수시간(학점)별 예정시간 배포표 — credit → 주차별 예정시간.
+   * 학교가 배포한 표를 관리자 모드에서 넣는다. 없으면 수업일수로 계산한다.
+   */
+  hourly_tables?: Record<number, number[]>
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -214,8 +226,8 @@ export interface Exam {
   no: number
   /** 실시 주차 */
   week: number
-  /** 마지막 단원 = 진도 배분 기준점 */
-  anchor_unit: string | null
+  /** 이 시험까지 나가는 마지막 성취기준 코드 = 진도 배분 기준점 */
+  anchor_code: string | null
   parts: ExamPart[]
 }
 
@@ -325,20 +337,28 @@ export interface SemesterPlan {
   grade: number
   /** 학점 = 주당 시수 */
   credit: number
+  /** 1학기 / 2학기 — school.calendars에서 학사일정을 고르는 열쇠 */
+  semester: 1 | 2
   /** 지도교사명 — 인원수가 Ⅰ 표 분할 수 결정 */
   teachers: string[]
   split_score_type: SplitScoreType
   /** 3-2. 정기시험 */
   exam_count: 0 | 1 | 2
   exams: Exam[]
+  /**
+   * 반영 비율 — 계획서마다 다르므로 학기 레이어에 둔다.
+   * school.rules의 값은 새 계획서를 만들 때의 기본값 역할만 한다.
+   */
+  exam_ratio: number
+  perf_ratio: number
   /** 3-3. 수행평가 */
   performances: Performance[]
-  /** 진도 배분 결과 — 주차 번호 → 단원 id 목록. 자동 배분 후 교사가 손댄 값이라 저장한다. */
+  /**
+   * 진도 배분 결과 — 주차 번호 → 성취기준 코드 목록.
+   * 파생값이지만 교사가 손댈 수 있어 저장한다.
+   * 같은 코드가 연속 주에 있으면 '이어짐'이며 그것도 파생이다 (isContinued).
+   */
   distribution: Record<number, string[]>
-  /** 작성 방식 */
-  mode: '간단' | '심화'
-  /** 6단계 중 현재 단계 */
-  step: number
   /**
    * 직접 확인 체크 결과 — hwpx 빨간 글씨 검토 방식으로 대체되어 더는 쓰지 않는다.
    * 구버전 저장분과의 호환을 위해 남겨 둔다.

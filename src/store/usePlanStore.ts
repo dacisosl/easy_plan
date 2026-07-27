@@ -1,31 +1,29 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AiDraft, Performance, SchoolLayer, SemesterPlan, Subject, Unit } from '@/types'
+import type {
+  AcademicCalendar,
+  AiDraft,
+  FocusTarget,
+  Performance,
+  SchoolLayer,
+  SemesterPlan,
+  Subject,
+  Unit,
+} from '@/types'
 import { SCHOOL_SEED } from '@/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '@/data/subject'
-import { distributeUnits } from '@/lib/derive'
+import { distributeStandards, weeksOf } from '@/lib/derive'
 import { buildPerformance } from '@/lib/autofill'
 import type { ImportedSubject } from '@/lib/importStandards'
 import { unitsFromAreas } from '@/lib/importStandards'
 
 export type ScreenId =
-  | 'home' // 간단 입력 (기본 경로)
-  | 'setup' // 심화 1 · 과목 설정
-  | 'units' // 심화 2 · 단원 매핑
-  | 'schedule' // 심화 3 · 진도 설계
-  | 'performances' // 심화 4 · 수행평가
-  | 'review' // 로직 오류 (단계 밖 — 오류 시만 경유)
-  | 'download' // 심화 5 · 내려받기
+  | 'home' // 작성 — 한 화면에 전부
   | 'generating' // AI 문안 생성 파이프라인
+  | 'download' // 내려받기 (오류도 여기서 보여준다)
+  | 'admin' // 관리자 — 학사일정 · 배포표 · 학교 규칙
 
-/** 심화 5단계 — 검토는 단계에서 뺀다 (오류 있을 때만 경유) */
-export const STEPS: { id: ScreenId; label: string }[] = [
-  { id: 'setup', label: '과목 설정' },
-  { id: 'units', label: '단원 매핑' },
-  { id: 'schedule', label: '진도 설계' },
-  { id: 'performances', label: '수행평가' },
-  { id: 'download', label: '내려받기' },
-]
+export type { FocusTarget }
 
 interface State {
   school: SchoolLayer
@@ -33,13 +31,18 @@ interface State {
   plans: SemesterPlan[]
   currentPlanId: string | null
   screen: ScreenId
+  /** 홈으로 돌아가 스크롤·포커스할 구획. 저장하지 않는다. */
+  focusTarget: FocusTarget | null
 }
 
 interface Actions {
   go: (screen: ScreenId) => void
   openPlan: (id: string, screen?: ScreenId) => void
-  newPlan: (mode: '간단' | '심화', subjectId?: string) => string
+  newPlan: (subjectId?: string) => string
   deletePlan: (id: string) => void
+  /** 오류의 '고치기' — 홈으로 보내고 해당 구획에 포커스를 준다 */
+  focusOn: (target: FocusTarget) => void
+  clearFocus: () => void
 
   current: () => SemesterPlan | null
   currentSubject: () => Subject | null
@@ -58,8 +61,10 @@ interface Actions {
   patchUnit: (unitId: string, patch: Partial<Unit>) => void
   removeUnit: (unitId: string) => void
 
+  /** 앵커·학사일정이 바뀌면 진도를 다시 배분한다 */
   redistribute: () => void
-  setWeekUnits: (week: number, unitIds: string[]) => void
+  /** 그 주의 성취기준을 손으로 고친다 */
+  setWeekStandards: (week: number, codes: string[]) => void
 
   /** 수행평가 추가/갱신 — 숫자·성취기준·루브릭 뼈대는 결정적 재계산 */
   upsertPerf: (input: {
@@ -85,36 +90,49 @@ export const usePlanStore = create<State & Actions>()(
       plans: [PLAN_SEED],
       currentPlanId: null,
       screen: 'home',
+      focusTarget: null,
 
       go: (screen) => set({ screen }),
 
-      openPlan: (id, screen) =>
-        set((s) => ({
-          currentPlanId: id,
-          screen: screen ?? (s.plans.find((p) => p.id === id)?.mode === '심화' ? 'setup' : 'home'),
-        })),
+      focusOn: (target) => set({ screen: 'home', focusTarget: target }),
+      clearFocus: () => set({ focusTarget: null }),
 
-      newPlan: (mode, subjectId) => {
+      openPlan: (id, screen) => set({ currentPlanId: id, screen: screen ?? 'home' }),
+
+      newPlan: (subjectId) => {
         const id = `plan-${uid()}`
-        const subject =
-          get().subjects.find((x) => x.id === subjectId) ?? get().subjects[0]
+        const school = get().school
+        const subject = get().subjects.find((x) => x.id === subjectId) ?? get().subjects[0]
+        const semester = school.calendars[0]?.semester ?? 1
+        // 정기시험 주는 학사일정의 is_exam에서 파생한다 — 화면에 박아 두지 않는다
+        const examWeeks = weeksOf(school, semester)
+          .filter((w) => w.is_exam)
+          .map((w) => w.no)
+        const exams = examWeeks.slice(0, 2).map((week, i) => ({
+          no: i + 1,
+          week,
+          anchor_code: null,
+          parts: [
+            { kind: '선택형' as const, count: 20, points: 70 },
+            { kind: '서술형' as const, count: 5, points: 30 },
+          ],
+        }))
         const plan: SemesterPlan = {
           ...PLAN_SEED,
           id,
           subject_id: subject.id,
-          mode,
-          step: 1,
+          semester,
           teachers: [],
           performances: [],
-          distribution: distributeUnits(subject.units, get().school.calendar.weeks, PLAN_SEED.exams),
+          exam_count: exams.length as 0 | 1 | 2,
+          exams,
+          exam_ratio: school.rules.exam_ratio,
+          perf_ratio: school.rules.perf_ratio,
+          distribution: distributeStandards(subject, weeksOf(school, semester), exams),
           ai: undefined,
           updated_at: new Date().toISOString(),
         }
-        set((s) => ({
-          plans: [plan, ...s.plans],
-          currentPlanId: id,
-          screen: mode === '심화' ? 'setup' : 'home',
-        }))
+        set((s) => ({ plans: [plan, ...s.plans], currentPlanId: id, screen: 'home' }))
         return id
       },
 
@@ -274,14 +292,14 @@ export const usePlanStore = create<State & Actions>()(
         const plan = get().current()
         const subject = get().currentSubject()
         if (!plan || !subject) return
-        const dist = distributeUnits(subject.units, get().school.calendar.weeks, plan.exams)
-        get().patchPlan({ distribution: dist })
+        const weeks = weeksOf(get().school, plan.semester)
+        get().patchPlan({ distribution: distributeStandards(subject, weeks, plan.exams) })
       },
 
-      setWeekUnits: (week, unitIds) => {
+      setWeekStandards: (week, codes) => {
         const plan = get().current()
         if (!plan) return
-        get().patchPlan({ distribution: { ...plan.distribution, [week]: unitIds } })
+        get().patchPlan({ distribution: { ...plan.distribution, [week]: codes } })
       },
 
       upsertPerf: (input) => {
@@ -291,9 +309,9 @@ export const usePlanStore = create<State & Actions>()(
         if (!plan || !subject) return
 
         const others = plan.performances.filter((p) => p.id !== input.id)
-        // 비율을 정하지 않으면 남은 몫을 준다 (심화에서 직접 정하면 그 값)
+        // 비율을 정하지 않으면 남은 몫을 준다
         const usedRatio = others.reduce((s, p) => s + p.ratio, 0)
-        const ratio = input.ratio ?? Math.max(0, school.rules.perf_ratio - usedRatio)
+        const ratio = input.ratio ?? Math.max(0, plan.perf_ratio - usedRatio)
 
         const built = buildPerformance({
           id: input.id ?? `perf-${uid()}`,
@@ -303,7 +321,6 @@ export const usePlanStore = create<State & Actions>()(
           week: input.week,
           school,
           distribution: plan.distribution,
-          units: subject.units,
         })
 
         const exists = plan.performances.some((p) => p.id === built.id)
@@ -337,20 +354,63 @@ export const usePlanStore = create<State & Actions>()(
     }),
     {
       name: 'easy-plan',
-      version: 2,
+      version: 3,
+      /**
+       * v3 — 진도 배분이 단원 id에서 성취기준 코드로 바뀌었고,
+       * 학사일정이 학기별 배열이 되었으며, 비율이 학기 레이어로 내려왔다.
+       *
+       * 옛 저장분을 못 읽어 앱이 안 뜨는 게 최악이라, 되살릴 수 없는 값은
+       * 조용히 기본값으로 떨어뜨린다.
+       */
       migrate: (persisted, version) => {
-        const state = persisted as Partial<State> & { screen?: string }
-        if (version < 2) {
-          // v1의 화면 값(simple/result/focus/performance)을 새 흐름으로 접는다
-          const map: Record<string, ScreenId> = {
-            simple: 'home',
-            result: 'download',
-            focus: 'review',
-            performance: 'performances',
-          }
-          if (state.screen && map[state.screen]) state.screen = map[state.screen]
+        const state = persisted as Partial<State> & Record<string, unknown>
+        if (version >= 3) return state as unknown as State & Actions
+
+        // 학사일정: calendar(단수) → calendars(배열). 2학기 시드를 보충한다.
+        const school = state.school as (SchoolLayer & { calendar?: AcademicCalendar }) | undefined
+        if (school && !school.calendars) {
+          const old = school.calendar
+          school.calendars = old
+            ? [old, ...SCHOOL_SEED.calendars.filter((c) => c.semester !== old.semester)]
+            : SCHOOL_SEED.calendars
+          delete school.calendar
         }
-        return state as State & Actions
+        const weeks = school?.calendars?.[0]?.weeks ?? SCHOOL_SEED.calendars[0].weeks
+        const rules = school?.rules ?? SCHOOL_SEED.rules
+
+        const subjects = (state.subjects ?? []) as Subject[]
+        state.plans = ((state.plans ?? []) as (SemesterPlan & Record<string, unknown>)[]).map(
+          (p) => {
+            const subject = subjects.find((x) => x.id === p.subject_id)
+            const codeOfUnit = (unitId: unknown) =>
+              subject?.units.find((u) => u.id === unitId)?.standard_codes.slice(-1)[0] ?? null
+
+            // 앵커: 단원 id → 그 단원의 마지막 성취기준 코드
+            const exams = (p.exams ?? []).map((e) => {
+              const legacy = e as typeof e & { anchor_unit?: string | null }
+              return {
+                ...e,
+                anchor_code: e.anchor_code ?? codeOfUnit(legacy.anchor_unit),
+              }
+            })
+            delete (p as Record<string, unknown>).mode
+            delete (p as Record<string, unknown>).step
+
+            return {
+              ...p,
+              semester: p.semester ?? 1,
+              exam_ratio: p.exam_ratio ?? rules.exam_ratio,
+              perf_ratio: p.perf_ratio ?? rules.perf_ratio,
+              exams,
+              // 단원 기준 배분은 되살릴 수 없다 — 성취기준 기준으로 다시 배분한다
+              distribution: subject ? distributeStandards(subject, weeks, exams) : {},
+              ai: undefined, // 배분이 바뀌었으니 초안도 무효
+            } as SemesterPlan
+          },
+        )
+
+        state.screen = 'home'
+        return state as unknown as State & Actions
       },
       partialize: (s) => ({
         school: s.school,

@@ -9,8 +9,8 @@
  */
 
 import type { Area, ScaleType, SemesterPlan, Standard, Subject, Unit } from '@/types'
-import { distributeUnits } from '@/lib/derive'
-import { SCHOOL_SEED } from './school'
+import { distributeStandards } from '@/lib/derive'
+import { WEEKS_2026_1 } from './school'
 import seed from './subject.seed.json'
 
 const IMPORTED = seed as {
@@ -93,14 +93,17 @@ export const PLAN_SEED: SemesterPlan = {
   subject_id: SUBJECT_SEED.id,
   grade: 2,
   credit: 3,
+  semester: 1,
   teachers: ['김서연', '박준호'],
   split_score_type: '추정',
   exam_count: 2,
+  exam_ratio: 60,
+  perf_ratio: 40,
   exams: [
     {
       no: 1,
       week: 8,
-      anchor_unit: 'u05', // 03. 자연과 인간의 관계
+      anchor_code: '[12현윤02-03]', // 03. 자연과 인간의 관계 마지막 기준
       parts: [
         { kind: '선택형', count: 20, points: 70 },
         { kind: '서술형', count: 5, points: 30 },
@@ -109,7 +112,7 @@ export const PLAN_SEED: SemesterPlan = {
     {
       no: 2,
       week: 18,
-      anchor_unit: 'u15', // 01. 갈등 해결과 소통의 윤리
+      anchor_code: '[12현윤06-01]', // 01. 갈등 해결과 소통의 윤리
       parts: [
         { kind: '선택형', count: 20, points: 70 },
         { kind: '서술형', count: 5, points: 30 },
@@ -189,12 +192,9 @@ export const PLAN_SEED: SemesterPlan = {
   ],
   // 진도 배분은 파생값이지만 교사가 손댄 결과를 남겨야 하므로 학기 레이어에 저장한다.
   // 시드는 앵커 기준으로 미리 배분해 둔다 — 비어 있으면 규칙 10·13이 전부 걸린다.
-  distribution: distributeUnits(UNITS, SCHOOL_SEED.calendar.weeks, [
-    { week: 8, anchor_unit: 'u05' },
-    { week: 18, anchor_unit: 'u15' },
+  distribution: distributeStandards({ units: UNITS }, WEEKS_2026_1, [
+    { week: 8, anchor_code: '[12현윤02-03]' },
+    { week: 18, anchor_code: '[12현윤06-01]' },
   ]),
-  mode: '심화',
-  step: 1,
-  human_checks: {},
   updated_at: '2026-07-25T09:00:00.000Z',
 }
