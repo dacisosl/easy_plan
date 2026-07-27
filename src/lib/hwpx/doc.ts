@@ -10,6 +10,9 @@
  *  ⑤ 행 복제 후 cellAddr/rowAddr 재부여 + tbl/rowCnt 갱신
  *  ⑥ 글자를 바꾼 문단의 <hp:linesegarray>를 지운다 — 줄바꿈 위치 캐시라서
  *     그냥 두면 새 글자를 옛 줄 폭에 욱여넣어 자간이 뭉개진다
+ *  ⑦ 메모(<hp:ctrl> 안 fieldBegin type="MEMO") 안에도 <hp:t>가 있다 —
+ *     본문을 읽고 쓸 때 들어가면 안내문을 본문으로 오인하고 덮어쓴다.
+ *     양식의 안내문이 전부 메모라서 이걸 놓치면 조용히 문서가 망가진다.
  *
  * 서버에서만 돈다. @xmldom/xmldom과 jszip은 노드 전용으로 잡아 두었다.
  */
@@ -49,6 +52,35 @@ function descendants(node: Node, local: string): El[] {
   }
   walk(node)
   return out
+}
+
+/**
+ * 메모(`<hp:ctrl>` 안의 `fieldBegin type="MEMO"`) 안으로는 들어가지 않는 run 수집.
+ *
+ * ★ 양식에는 안내문이 메모로 달려 있다. 그 안에도 `<hp:t>`가 있어서
+ * 그냥 후손을 훑으면 안내문을 본문으로 오인해 읽고, 더 나쁘게는 덮어쓴다.
+ * 본문을 읽거나 쓸 때는 반드시 이 함수를 거칠 것.
+ */
+export function runsOutsideCtrl(node: Node): El[] {
+  const out: El[] = []
+  const walk = (n: Node) => {
+    for (const c of Array.from(n.childNodes)) {
+      if (!isEl(c) || c.localName === 'ctrl') continue
+      if (c.localName === 'run') {
+        out.push(c)
+        walk(c)
+      } else walk(c)
+    }
+  }
+  walk(node)
+  return out
+}
+
+/** run의 직계 `<hp:t>` 글자 (ctrl 안은 애초에 직계가 아니다) */
+function runText(r: El): string {
+  return childrenOf(r, 't')
+    .map((t) => t.textContent ?? '')
+    .join('')
 }
 
 export class HwpxDoc {
@@ -103,17 +135,15 @@ export class HwpxDoc {
     })
   }
 
-  /** 문단의 모든 <hp:t>를 이어 붙인 글자. 조각 단위로 찾으면 안 걸린다(②). */
+  /** 문단 본문 글자. 조각 단위로 찾으면 안 걸린다(②). 메모는 제외한다(⑦). */
   paraText(p: El): string {
-    return descendants(p, 't')
-      .map((t) => t.textContent ?? '')
-      .join('')
+    return runsOutsideCtrl(p).map(runText).join('')
   }
 
-  /** 표·셀 전체 글자 */
+  /** 표·셀 본문 글자 (메모 제외) */
   textOf(node: El): string {
-    return descendants(node, 't')
-      .map((t) => t.textContent ?? '')
+    return runsOutsideCtrl(node)
+      .map(runText)
       .join('')
       .replace(/\s+/g, ' ')
       .trim()
@@ -150,12 +180,12 @@ export class HwpxDoc {
    * 그 칸만 글씨체가 어긋난다. 글씨체 통일의 핵심.
    */
   private inheritCharPr(p: El): string {
-    const own = childrenOf(p, 'run')[0]?.getAttribute('charPrIDRef')
+    const own = runsOutsideCtrl(p)[0]?.getAttribute('charPrIDRef')
     if (own) return own
     const parent = p.parentNode
     if (parent) {
       for (const sib of childrenOf(parent, 'p')) {
-        const ref = childrenOf(sib, 'run')[0]?.getAttribute('charPrIDRef')
+        const ref = runsOutsideCtrl(sib)[0]?.getAttribute('charPrIDRef')
         if (ref) return ref
       }
     }
@@ -171,17 +201,19 @@ export class HwpxDoc {
   setPara(p: El, text: string, opts?: { charPrIDRef?: string }): void {
     for (const lsa of childrenOf(p, 'linesegarray')) p.removeChild(lsa)
 
-    const ts = descendants(p, 't')
+    // 메모 안의 <hp:t>는 건드리지 않는다 (⑦)
+    const runs = runsOutsideCtrl(p)
+    const ts = runs.flatMap((r) => childrenOf(r, 't'))
     if (ts.length > 0) {
       ts[0].textContent = text
       for (const t of ts.slice(1)) t.textContent = ''
       if (opts?.charPrIDRef) {
-        for (const run of descendants(p, 'run')) run.setAttribute('charPrIDRef', opts.charPrIDRef)
+        for (const run of runs) run.setAttribute('charPrIDRef', opts.charPrIDRef)
       }
       return
     }
 
-    let run = childrenOf(p, 'run')[0]
+    let run = runs[0]
     if (!run) {
       run = this.doc.createElementNS(HP_NS, 'hp:run')
       run.setAttribute('charPrIDRef', opts?.charPrIDRef ?? this.inheritCharPr(p))
@@ -191,7 +223,7 @@ export class HwpxDoc {
     }
     const t = this.doc.createElementNS(HP_NS, 'hp:t')
     t.textContent = text
-    run.insertBefore(t, run.firstChild)
+    run.appendChild(t)
   }
 
   /** 문단 글자를 빨간 글씨(같은 글꼴·크기)로 넣는다 — AI 초안 표시용 */
@@ -344,6 +376,97 @@ export class HwpxDoc {
       parent.insertBefore(np, marker)
     }
     for (const p of filled) parent.removeChild(p)
+  }
+
+  /* ── 메모(안내문) ─────────────────────────── */
+
+  /**
+   * 양식의 안내 메모를 전부 지운다.
+   * `<hp:ctrl>`에 `fieldBegin type="MEMO"` 또는 `fieldEnd`가 들어 있는 것을 통째로 없앤다.
+   * 반환값 = 지운 개수.
+   */
+  removeMemos(): number {
+    let n = 0
+    for (const ctrl of descendants(this.sec, 'ctrl')) {
+      const isMemo = childrenOf(ctrl, 'fieldBegin').some(
+        (f) => f.getAttribute('type') === 'MEMO',
+      )
+      const isEnd = childrenOf(ctrl, 'fieldEnd').length > 0
+      if (isMemo || isEnd) {
+        ctrl.parentNode?.removeChild(ctrl)
+        n++
+      }
+    }
+    return n
+  }
+
+  /* ── 빨간 스팬 (양식이 표시한 '교사가 채울 곳') ── */
+
+  /** charPr이 빨강인지 — header.xml을 한 번만 훑고 캐시한다 */
+  private redIdsCache: Set<string> | null = null
+  private redIds(): Set<string> {
+    if (this.redIdsCache) return this.redIdsCache
+    const set = new Set<string>()
+    const { items } = this.headerList('charProperties', 'charPr')
+    for (const c of items) {
+      if (c.getAttribute('textColor') === '#FF0000') {
+        const id = c.getAttribute('id')
+        if (id) set.add(id)
+      }
+    }
+    this.redIdsCache = set
+    return set
+  }
+
+  isRedRun(run: El): boolean {
+    const ref = run.getAttribute('charPrIDRef')
+    return !!ref && this.redIds().has(ref)
+  }
+
+  /** 노드(문단·셀·표) 안의 빨간 run들을 문서 순서대로. 글자가 없는 run은 뺀다. */
+  redRuns(node: El): El[] {
+    return runsOutsideCtrl(node).filter((r) => this.isRedRun(r) && runText(r) !== '')
+  }
+
+  /** run 하나의 글자를 갈아끼운다 (첫 `<hp:t>`에 넣고 나머지는 비운다) */
+  setRunText(run: El, text: string): void {
+    const ts = childrenOf(run, 't')
+    if (ts.length === 0) {
+      const t = this.doc.createElementNS(HP_NS, 'hp:t')
+      t.textContent = text
+      run.appendChild(t)
+      return
+    }
+    ts[0].textContent = text
+    for (const t of ts.slice(1)) t.textContent = ''
+  }
+
+  /**
+   * 노드 안의 빨간 스팬을 앞에서부터 `values`로 채운다.
+   * value가 `null`이면 그 스팬은 그대로 둔다. 값이 모자라면 남은 스팬은 손대지 않는다.
+   * 글자를 바꿨으니 그 문단의 줄바꿈 캐시는 지운다(⑥).
+   * 반환값 = 실제로 바꾼 개수.
+   */
+  fillRed(node: El, values: (string | null)[]): number {
+    const runs = this.redRuns(node)
+    let n = 0
+    runs.forEach((r, i) => {
+      const v = values[i]
+      if (v == null) return
+      this.setRunText(r, v)
+      n++
+      // 이 run이 속한 문단의 줄바꿈 캐시 제거
+      let p: Node | null = r.parentNode
+      while (p && !(isEl(p) && p.localName === 'p')) p = p.parentNode
+      if (isEl(p)) for (const lsa of childrenOf(p, 'linesegarray')) p.removeChild(lsa)
+    })
+    return n
+  }
+
+  /** 셀 안의 빨간 스팬 채우기 */
+  fillCellRed(tbl: El, r: number, c: number, values: (string | null)[]): number {
+    const tc = this.cell(tbl, r, c)
+    return tc ? this.fillRed(tc, values) : 0
   }
 
   /* ── header.xml 서식 (빨강 · 배경색) ───────── */

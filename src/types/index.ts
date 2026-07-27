@@ -286,9 +286,30 @@ export interface AiDraft {
   fallback: boolean
   /** 입력 지문 — 일치하면 재호출을 건너뛴다 */
   input_hash: string
-  /** Ⅰ 교수학습 · Ⅱ 평가의 목적 · Ⅸ 활용 방안 · Ⅹ 원격수업 — 문단 배열 */
-  sections: { I: string[]; II: string[]; IX: string[]; X: string[] }
-  /** 주차 → 수업 방법 및 수업·평가 연계의 주안점 (진도표 5열) */
+  /**
+   * 양식이 빨간 글씨로 표시한 '교사가 채울 곳'만 채운다.
+   * Ⅶ·Ⅸ는 양식의 검은 글씨(학교 공통 문구)라 AI가 손대지 않는다.
+   */
+  sections: {
+    /** Ⅰ 교수학습 운영계획 — 지도교사 수만큼 (표가 가로로 분할된다) */
+    I: string[]
+    /** Ⅱ 평가의 목적 가·나·다 — 과목별 목표 3문장 (라·마는 양식 유지) */
+    II: string[]
+    /** Ⅲ-1 가·다·라 — 과목명이 들어가는 3문장 (나·마~차는 양식 유지) */
+    III1: string[]
+    /** 학기단위 성취수준 A~E */
+    semesterLevels: Partial<Record<'A' | 'B' | 'C' | 'D' | 'E', string>>
+    /** 최소 성취수준 — 공통과목만 */
+    minLevel: string
+  }
+  /**
+   * 주차 → 수업 방법 및 수업·평가 연계의 주안점 (진도표 5열).
+   * 한 줄이 한 문단이다. 형식:
+   *   [강의식, 모둠협력수업]
+   *   -활동 하나
+   *   -활동 둘
+   *   [관찰평가] 그 차시의 평가 내용
+   */
   weekly: Record<number, string[]>
   /** 수행평가 id → 활동 과정 + 루브릭(구조는 코드, text만 AI) */
   perfs: Record<string, { activity: string; rubric: RubricRow[] }>

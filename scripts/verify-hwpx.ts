@@ -101,7 +101,8 @@ async function main() {
 
   /* 6 — 예시 글자 잔존 */
   const xml = await zip.file('Contents/section0.xml')!.async('string')
-  const leftovers = ['미적분Ⅰ', '12미적', '김민준', '해밀고']
+  // 양식에 남아 있으면 안 되는 예시 글자. '해밀고'는 학교 이름이라 남는 게 맞다.
+  const leftovers = ['미적분Ⅰ', '12미적', '김민준', '통합사회', '수행평가명1', '수행평가명2', 'MEMO']
   const found = leftovers.filter((s) => xml.includes(s))
   if (found.length === 0) ok('예시 글자 잔존 없음')
   else bad(`예시 글자가 남아 있음: ${found.join(', ')}`)

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/export — 값을 받아 완성된 hwpx를 돌려준다.
  *
  * hwpx 조립은 서버에서만 한다. @xmldom/xmldom과 jszip이 노드 전용이고,
@@ -8,7 +8,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { NextResponse } from 'next/server'
-import { renderPlan } from '@/lib/hwpx/render'
+import { renderForm } from '@/lib/hwpx/renderForm'
 import type { AiDraft, SchoolLayer, SemesterPlan, Subject } from '@/types'
 
 export const runtime = 'nodejs'
@@ -36,16 +36,16 @@ export async function POST(req: Request) {
 
   let template: Uint8Array
   try {
-    template = new Uint8Array(await readFile(join(process.cwd(), 'templates', 'plan_blank.hwpx')))
+    template = new Uint8Array(await readFile(join(process.cwd(), 'templates', 'form_2026.hwpx')))
   } catch {
     return NextResponse.json(
-      { error: 'templates/plan_blank.hwpx가 없습니다. `npm run template`을 먼저 실행하세요.' },
+      { error: 'templates/form_2026.hwpx가 없습니다. 배포된 양식 파일을 templates/에 두세요.' },
       { status: 500 },
     )
   }
 
   try {
-    const { bytes, report } = await renderPlan(template, plan, subject, school, ai)
+    const { bytes, report } = await renderForm(template, plan, subject, school, ai)
     const name = `${subject.name}_${school.calendar.semester}학기_계획서.hwpx`
     return new NextResponse(new Uint8Array(bytes) as unknown as BodyInit, {
       headers: {

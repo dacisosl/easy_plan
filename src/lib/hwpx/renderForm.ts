@@ -1,0 +1,715 @@
+/**
+ * 값 → hwpx. 배포된 양식(`templates/form_2026.hwpx`)을 채운다.
+ *
+ * ★ 핵심 원칙: 양식의 **검은 글씨는 건드리지 않는다.**
+ * 양식은 교사가 바꿀 곳을 이미 **빨간 글씨**로 표시해 두었다. 그 스팬만 갈아끼운다.
+ * 그래서 Ⅶ·Ⅸ처럼 빨간 글씨가 없는 구역은 통째로 그대로 나간다 — 분량도 문체도 유지된다.
+ *
+ * 안내문은 전부 **메모**로 달려 있다. 마지막에 통째로 지운다.
+ * 채워 넣은 값은 빨간 글씨 그대로 둔다 — 교사가 한글에서 읽고 검정으로 바꾸며 검토한다.
+ */
+
+import type { AiDraft, Performance, SchoolLayer, SemesterPlan, Subject } from '@/types'
+import {
+  areaRoman,
+  classRange,
+  essayTotal,
+  examStandardCodes,
+  josa,
+  monthWeekLabel,
+  noticeWeek,
+  periodLabel,
+  rubricMax,
+  scoreSumLabels,
+  tiebreakOrder,
+} from '@/lib/derive'
+import { perfNoteLine } from '@/lib/aiDraft'
+import { HwpxDoc, childrenOf } from './doc'
+
+export interface RenderReport {
+  filled: string[]
+  warnings: string[]
+}
+
+/** 교사가 직접 채울 칸의 배경색 (연노랑) */
+const FILL_ME = '#FFF3C4'
+
+const CHECK_ORDER = [
+  '서술·논술',
+  '구술·발표',
+  '토의·토론',
+  '프로젝트',
+  '실험·실습',
+  '포트폴리오',
+] as const
+
+/** Ⅴ 성취도 기준표 — 양식에 다섯 벌이 있고 과목 유형에 맞는 하나만 남긴다 */
+const GRADE_TABLE_FOR: Record<string, number> = {
+  common: 0, // 공통과목 (공국·공수·공영·한국사·통사·통과)
+  sci_lab: 1, // 공통과목 중 과탐실
+  elective: 2, // 선택과목
+  arts_pe: 3, // 음악·미술·체육
+  pass_fail: 4, // 진로와 직업 (이수/미이수)
+}
+
+export async function renderForm(
+  template: Uint8Array,
+  plan: SemesterPlan,
+  subject: Subject,
+  school: SchoolLayer,
+  ai?: AiDraft,
+): Promise<{ bytes: Uint8Array; report: RenderReport }> {
+  const doc = await HwpxDoc.load(template)
+  const report: RenderReport = { filled: [], warnings: [] }
+  const did = (s: string) => report.filled.push(s)
+  const warn = (s: string) => report.warnings.push(s)
+
+  const { calendar, rules } = school
+  const tables = doc.topTables()
+  const tops = () => doc.topParas()
+
+  const orderedUnits = [...subject.units].sort((a, b) => a.order - b.order)
+  const unitById = new Map(orderedUnits.map((u) => [u.id, u]))
+  const areaName = (no: string | null) => subject.areas.find((a) => a.no === no)?.name ?? ''
+  const stdByCode = new Map(subject.standards.map((s) => [s.code, s]))
+
+  /** 구역 머리 표(Ⅰ·Ⅱ…)를 로마자로 찾는다 */
+  const sectionTable = (roman: string) =>
+    tables.find((t) => doc.cellText(t, 0, 0) === roman && doc.rows(t).length === 1)
+  const paraOf = (node: Element): Element | null => {
+    const list = tops()
+    let n: Node | null = node
+    while (n && !list.includes(n as Element)) n = n.parentNode
+    return (n as Element) ?? null
+  }
+  /** 구역 사이의 최상위 문단들 */
+  const between = (fromRoman: string, toRoman: string): Element[] => {
+    const a = sectionTable(fromRoman)
+    const b = sectionTable(toRoman)
+    if (!a) return []
+    const list = tops()
+    const i = list.indexOf(paraOf(a)!)
+    const j = b ? list.indexOf(paraOf(b)!) : list.length
+    return list.slice(i + 1, j < 0 ? list.length : j)
+  }
+  /** 문단 앞머리로 찾기 (가. 나. 다. …) */
+  const paraStartingWith = (scope: Element[], prefix: string) =>
+    scope.find((p) => doc.paraText(p).trim().startsWith(prefix))
+
+  /**
+   * Ⅲ은 '1. 평가의 기본 방향'과 '2. 평가의 방침' 두 묶음이고 둘 다 가~차를 쓴다.
+   * 나누지 않으면 Ⅲ-2의 '다.'가 Ⅲ-1의 '다.'를 덮어쓴다.
+   */
+  const splitIII = (): { one: Element[]; two: Element[] } => {
+    const scope = between('Ⅲ', 'Ⅳ')
+    const at = scope.findIndex((p) => /^2\.\s*평가의 방침/.test(doc.paraText(p).trim()))
+    return at < 0 ? { one: scope, two: [] } : { one: scope.slice(0, at), two: scope.slice(at) }
+  }
+
+  /* ── 표지 · 대상 학년 (3줄) ─────────────────── */
+  {
+    doc.setCell(tables[0], 1, 0, [
+      `${calendar.year}학년도 ${plan.grade}학년 ${calendar.semester}학기 < ${subject.name} >`,
+      '교수학습 및 평가 운영계획',
+    ])
+    const teachers =
+      plan.teachers.length > 0 ? plan.teachers.map((t) => `${t} (인)`).join(', ') : '(인)'
+    // 양식대로 세 줄로 나눈다
+    doc.setCell(tables[1], 0, 0, [
+      `◆ 대상 학년 : ${plan.grade}학년 (${classRange(school, plan.grade) || '1반 ~ ○반'})`,
+      `◆ 학점 : ${plan.credit}학점`,
+      `◆ 지도 교사 : ${teachers}`,
+    ])
+    did('표지 · 대상 학년(3줄)')
+  }
+
+  /* ── 진도표 ───────────────────────────────── */
+  const progress = tables.find((t) => doc.cellText(t, 0, 0) === '주' && doc.cellText(t, 0, 1) === '기간')
+  if (!progress) warn('진도표를 찾지 못했습니다')
+  else {
+    // 양식은 앞쪽 몇 주가 4행 블록, 뒤쪽이 1행이라 섞여 있다. 1행/주로 정규화한다.
+    const rows = doc.rows(progress)
+    const proto = rows[rows.length - 1] // 마지막 주 = 7칸 단일 행
+    if (childrenOf(proto, 'tc').length !== 7) {
+      warn(`진도표 프로토타입 행의 칸이 7개가 아닙니다 (${childrenOf(proto, 'tc').length}개)`)
+    }
+    const protoClone = proto.cloneNode(true) as Element
+    for (const tr of rows.slice(1)) progress.removeChild(tr)
+    for (let i = 0; i < calendar.weeks.length; i++) {
+      progress.appendChild(protoClone.cloneNode(true) as Element)
+    }
+    doc.renumber(progress)
+
+    const noticeAt = new Map<number, Performance[]>()
+    const perfAt = new Map<number, Performance[]>()
+    for (const p of plan.performances) {
+      const nw = noticeWeek(p, rules.notice_lead_weeks)
+      noticeAt.set(nw, [...(noticeAt.get(nw) ?? []), p])
+      perfAt.set(p.week, [...(perfAt.get(p.week) ?? []), p])
+    }
+
+    calendar.weeks.forEach((w, i) => {
+      const r = i + 1
+      const ids = plan.distribution[w.no] ?? []
+      const units = ids.map((id) => unitById.get(id)).filter(Boolean) as typeof orderedUnits
+
+      // 단원명 칸 — 윗줄 영역, 아랫줄 단원명
+      const areaLine = [...new Set(units.map((u) => u.area_no))]
+        .map((no) => `${areaRoman(no)}. ${areaName(no)}`)
+        .join(' / ')
+      const unitLine = units.map((u) => u.name).join(' / ')
+
+      const stdLines = units
+        .flatMap((u) => u.standard_codes)
+        .map((c) => {
+          const s = stdByCode.get(c)
+          return s?.text ? `${c} ${s.text}` : c
+        })
+
+      // 주안점 = AI 4줄 + 수행평가 문구 (양식 메모가 요구하는 형식)
+      const lines: string[] = []
+      if (w.is_exam) {
+        lines.push(`${plan.exams.find((e) => e.week === w.no)?.no ?? ''}회 정기시험`)
+      } else {
+        lines.push(...(ai?.weekly[w.no] ?? []))
+      }
+      for (const p of perfAt.get(w.no) ?? []) lines.push(perfNoteLine(p.name, '실시', p.method))
+      for (const p of noticeAt.get(w.no) ?? []) lines.push(perfNoteLine(p.name, '안내', p.method))
+
+      doc.setCell(progress, r, 0, String(w.no))
+      doc.setCell(progress, r, 1, periodLabel(w).replace(/–/g, '~'))
+      doc.setCell(progress, r, 2, w.is_exam ? '' : [areaLine, unitLine].filter(Boolean))
+      doc.setCell(progress, r, 3, w.is_exam ? '' : stdLines.length ? stdLines : '')
+      doc.setCell(progress, r, 4, lines.length ? lines : '', { red: !w.is_exam && !!ai })
+      // 예정시간·실시누계는 교사가 직접 — 비우고 배경색만
+      doc.setCell(progress, r, 5, '')
+      doc.setCellShade(progress, r, 5, FILL_ME)
+      doc.setCell(progress, r, 6, w.events.join(', ') || '-')
+    })
+    did(`진도표 ${calendar.weeks.length}주 (1행/주로 정규화)`)
+  }
+
+  /* ── Ⅰ 교수학습 운영계획 — 교사 수만큼 가로 분할 ── */
+  {
+    const t = sectionTable('Ⅰ')
+    const lines = ai?.sections.I ?? []
+    if (!t) warn('Ⅰ 구역을 찾지 못했습니다')
+    else if (lines.length === 0) warn('Ⅰ 교수학습 운영계획 문안이 없습니다')
+    else {
+      // 머리 표(Ⅰ | 교수학습 운영계획) 오른쪽 칸을 교사 수만큼 세로로 나눠 적는다.
+      // 양식 메모: "교사의 수 만큼 가로로 분할하여 작성"
+      const names = plan.teachers.length > 0 ? plan.teachers : ['(지도교사)']
+      const body = names.map((n, i) => `[${n}] ${lines[i] ?? lines[0]}`)
+      const note = between('Ⅰ', 'Ⅱ').find((p) => doc.paraText(p).trim().startsWith('※'))
+      doc.replaceParaRun(paraOf(t)!, note ?? null, body, { red: true })
+      did(`Ⅰ 교수학습 운영계획 ${body.length}명분 (빨강)`)
+    }
+  }
+
+  /**
+   * "가. 본문" 꼴 항목 문단을 갈아끼운다.
+   *
+   * 양식은 항목 하나가 빨간 run 여러 조각으로 쪼개져 있다 (예: «가. »«본문»«…»).
+   * 머리글자(가.)까지 빨강 안에 들어 있으므로 첫 조각에 "머리글자 + 새 본문"을
+   * 통째로 넣고 나머지 조각은 비운다. 검은 글씨는 손대지 않는다.
+   */
+  const fillItem = (p: Element | undefined, head: string, line: string): boolean => {
+    if (!p || !line) return false
+    const reds = doc.redRuns(p)
+    if (reds.length === 0) return false
+    doc.fillRed(
+      p,
+      reds.map((_, k) => (k === 0 ? `${head}${line}` : '')),
+    )
+    return true
+  }
+
+  /* ── Ⅱ 평가의 목적 — 가·나·다만 교체, 라·마는 양식 유지 ── */
+  {
+    const scope = between('Ⅱ', 'Ⅲ')
+    const lines = ai?.sections.II ?? []
+    const n = ['가. ', '나. ', '다. '].filter((h, i) =>
+      fillItem(paraStartingWith(scope, h.trim()), h, lines[i]),
+    ).length
+    if (n > 0) did(`Ⅱ 평가의 목적 가·나·다 ${n}개 (라·마는 양식 유지)`)
+    else warn('Ⅱ 평가의 목적에서 바꿀 빨간 스팬을 찾지 못했습니다')
+  }
+
+  /* ── Ⅲ-1 평가의 기본 방향 — 가·다·라만 교체 ── */
+  {
+    const scope = splitIII().one
+    const lines = ai?.sections.III1 ?? []
+    const n = ['가. ', '다. ', '라. '].filter((h, i) =>
+      fillItem(paraStartingWith(scope, h.trim()), h, lines[i]),
+    ).length
+    if (n > 0) did(`Ⅲ-1 평가의 기본 방향 가·다·라 ${n}개 (나·마~차는 양식 유지)`)
+  }
+
+  /* ── Ⅲ-2 평가의 방침 — 값 스팬만 ── */
+  {
+    const scope = splitIII().two
+    // 조사는 앞말 끝소리를 따른다 — ‘…제시’와 ‘…토론’으로
+    const perfNames = plan.performances
+      .map((p, i) =>
+        i === plan.performances.length - 1 ? `‘${p.name}’` : `‘${p.name}’${josa(p.name, '와')} `,
+      )
+      .join('')
+    const put = (prefix: string, value: string, label: string) => {
+      const p = paraStartingWith(scope, prefix)
+      if (!p) return warn(`Ⅲ-2 '${prefix}' 문단을 찾지 못했습니다`)
+      if (doc.fillRed(p, [value]) === 0) warn(`Ⅲ-2 '${prefix}'에 빨간 스팬이 없습니다`)
+      else did(label)
+    }
+    put(
+      '다.',
+      plan.exam_count > 0
+        ? `정기시험 횟수는 학기당 ${plan.exam_count}회`
+        : '수행평가만으로 성적을 산출',
+      'Ⅲ-2 다 · 정기시험 횟수',
+    )
+    put(
+      '라.',
+      plan.exam_count > 0
+        ? `정기시험 ${rules.exam_ratio}%, 수행평가 ${rules.perf_ratio}%`
+        : '수행평가 100%',
+      'Ⅲ-2 라 · 반영 비율',
+    )
+    if (plan.performances.length > 0) {
+      // 뒤에 오는 검은 글씨가 "로 구분하여…"라서, 받침이 있으면 '으'를 빨간 스팬 끝에 붙인다
+      const last = plan.performances[plan.performances.length - 1].name
+      const tail = josa(last, '로') === '으로' ? '으' : ''
+      put('바.', `${perfNames}${tail}`, 'Ⅲ-2 바 · 수행평가명')
+    }
+    put('사.', `‘${tiebreakOrder(plan).join(' → ')}’`, 'Ⅲ-2 사 · 동점자 순서')
+  }
+
+  /* ── Ⅳ 평가 계획 ──────────────────────────── */
+  const evalTbl = tables.find((t) => doc.cellText(t, 0, 0) === '구분' && doc.rows(t).length >= 6)
+  if (!evalTbl) warn('Ⅳ 평가 계획 표를 찾지 못했습니다')
+  else {
+    const perExam = plan.exam_count > 0 ? rules.exam_ratio / plan.exam_count : 0
+    const examParts = plan.exams.flatMap((e) => e.parts)
+    const cols = [
+      ...plan.exams.map((e) => {
+        const codes = examStandardCodes(subject.units, plan.exams, e.no)
+        const total = e.parts.reduce((s, p) => s + p.points, 0)
+        const es = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
+        return {
+          title: `${e.no}회 정기시험`,
+          ratio: `${perExam}%`,
+          essay: total > 0 ? `서술형 ${((es / total) * perExam).toFixed(0)}%` : '0%',
+          std: codes.length ? `${codes[0]}~${codes[codes.length - 1]}` : '',
+          when: monthWeekLabel(school, e.week),
+        }
+      }),
+      ...plan.performances.map((p) => ({
+        title: p.name,
+        ratio: `${p.ratio}%`,
+        essay: p.method_checks.includes('서술·논술') ? `논술형 ${p.ratio}%` : '0%',
+        std: p.standard_codes.join(', '),
+        when: monthWeekLabel(school, p.week),
+      })),
+    ]
+
+    // 0행 묶음 머리 + 1행 회차·수행평가명
+    doc.fillCellRed(evalTbl, 0, 2, [`${rules.exam_ratio}%`])
+    doc.fillCellRed(evalTbl, 0, 3, [`${rules.perf_ratio}%`])
+    const titleCells = childrenOf(doc.rows(evalTbl)[1], 'tc')
+    cols.slice(0, titleCells.length).forEach((c, k) => doc.setCell(evalTbl, 1, k, c.title))
+
+    /** 라벨 행을 찾아 그 행의 빨간 스팬을 앞에서부터 채운다 */
+    const fillRow = (label: string, values: string[], what: string) => {
+      const ri = doc.rows(evalTbl).findIndex((_, r) =>
+        childrenOf(doc.rows(evalTbl)[r], 'tc').some(
+          (_c, ci) => (doc.cellText(evalTbl, r, ci) ?? '').trim() === label,
+        ),
+      )
+      if (ri < 0) return warn(`Ⅳ '${label}' 행을 찾지 못했습니다`)
+      const reds = doc.redRuns(doc.rows(evalTbl)[ri])
+      if (reds.length < values.length) {
+        warn(`Ⅳ '${label}' 행의 빨간 칸이 ${reds.length}개인데 값은 ${values.length}개입니다`)
+      }
+      doc.fillRed(doc.rows(evalTbl)[ri], values)
+      did(what)
+    }
+
+    // 양식의 '평가 방법'·'영역 만점' 행은 1회 정기시험만 문항 구분(선택형·서술형)까지
+    // 쪼개고 2회부터는 합계로 적는다. 빨간 칸 수가 그렇게 잡혀 있다.
+    const first = plan.exams[0]
+    const rest = plan.exams.slice(1)
+    const methodVals = [
+      ...(first?.parts.map((p) => p.kind) ?? []),
+      ...rest.map((e) => e.parts.map((p) => p.kind).join('·')),
+      ...plan.performances.map((p) => p.method),
+    ]
+    const maxVals = [
+      ...(first?.parts.map((p) => `${p.points}점`) ?? []),
+      ...rest.map((e) => `${e.parts.reduce((s, p) => s + p.points, 0)}점`),
+      ...plan.performances.map((p) => `${p.max_score}점`),
+    ]
+    void examParts
+
+    fillRow('평가 방법', methodVals, 'Ⅳ 평가 방법')
+    fillRow('영역 만점', maxVals, 'Ⅳ 영역 만점')
+    fillRow('반영 비율', [...cols.map((c) => c.ratio), '100%'], 'Ⅳ 반영 비율')
+    fillRow(
+      '서술형･논술형',
+      [...cols.map((c) => c.essay), `${essayTotal(plan, rules.exam_ratio).toFixed(0)}%`],
+      'Ⅳ 서술·논술',
+    )
+    fillRow('성취 기준', cols.map((c) => c.std), 'Ⅳ 성취기준 범위')
+    // 평가 시기는 양식이 수행평가 칸에만 빨강을 두었다 — 정기시험 칸은 따로 채운다
+    fillRow('평가 시기', plan.performances.map((p) => monthWeekLabel(school, p.week)), 'Ⅳ 평가 시기')
+    {
+      const ri = doc
+        .rows(evalTbl)
+        .findIndex((_, r) =>
+          childrenOf(doc.rows(evalTbl)[r], 'tc').some(
+            (_c, ci) => (doc.cellText(evalTbl, r, ci) ?? '').trim() === '평가 시기',
+          ),
+        )
+      if (ri > 0) {
+        const cells = childrenOf(doc.rows(evalTbl)[ri], 'tc')
+        // 라벨 다음 칸부터 정기시험 회차 시기를 채운다 (비어 있는 칸만)
+        plan.exams.forEach((e, k) => {
+          const ci = 1 + k
+          if (ci < cells.length && (doc.cellText(evalTbl, ri, ci) ?? '').trim() === '') {
+            doc.setCell(evalTbl, ri, ci, monthWeekLabel(school, e.week))
+          }
+        })
+      }
+    }
+  }
+
+  /* ── Ⅴ 성취도 기준표 — 다섯 벌 중 하나만 남긴다 ── */
+  {
+    // 다섯 벌: 공통 · 과탐실 · 선택 · 음미체 는 머리가 '성취도',
+    // 진로와 직업(P/F)만 '이수(P) | 이수한 경우 …' 로 다르다.
+    const gradeTables = tables.filter(
+      (t) =>
+        doc.cellText(t, 0, 1) === '성취도' ||
+        ((doc.cellText(t, 0, 0) ?? '').includes('이수(P)') && doc.rows(t).length === 2),
+    )
+    const keep = GRADE_TABLE_FOR[subject.type] ?? 2
+    if (gradeTables.length < 5) {
+      warn(`Ⅴ 성취도 표가 ${gradeTables.length}벌입니다 (5벌 기대)`)
+    }
+    gradeTables.forEach((t, i) => {
+      if (i !== keep) doc.removeTable(t)
+    })
+    // 남긴 표 주변의 조건부 ※ 문단도 정리한다
+    const scope = between('Ⅴ', 'Ⅵ')
+    const mark = (s: string, g: string) => new RegExp(`[''‘’]${g}[''‘’]`).test(s)
+    for (const p of scope) {
+      const s = doc.paraText(p).trim()
+      if (s === '') continue
+      if (s.startsWith(':')) {
+        doc.fillRed(p, [plan.split_score_type === '추정' ? '추정' : '고정'])
+        continue
+      }
+      const keepNote =
+        (mark(s, 'E') && subject.type === 'common') ||
+        (mark(s, 'C') && subject.type === 'sci_lab') ||
+        (mark(s, 'P') && subject.type === 'pass_fail')
+      if (!keepNote && (s.startsWith('※') || s.startsWith('<'))) doc.remove(p)
+    }
+    did(`Ⅴ 성취도 기준표 (${['공통', '과탐실', '선택', '음미체', 'P/F'][keep]}만 유지)`)
+  }
+
+  /* ── Ⅵ 수행평가 세부기준 ──────────────────── */
+  {
+    // 양식에는 빈 표 2벌 + '예시' 표 1벌이 있다. 예시는 지운다.
+    const perfTables = tables.filter(
+      (t) => doc.rows(t).length >= 10 && (doc.cellText(t, 1, 0) ?? '').includes('수행 활동 과정'),
+    )
+    const exampleTbl = tables.find((t) => (doc.cellText(t, 0, 0) ?? '') === '성취기준' && doc.rows(t).length === 12)
+    const examplePara = tops().find((p) => doc.paraText(p).trim() === '예시')
+    if (exampleTbl) doc.removeTable(exampleTbl)
+    if (examplePara) doc.remove(examplePara)
+
+    if (perfTables.length === 0) warn('수행평가 세부기준 표를 찾지 못했습니다')
+    else {
+      const n = plan.performances.length
+      // 표가 남으면 지우고, 모자라면 첫 벌을 문단째 복제한다
+      const protoPara = paraOf(perfTables[0])!
+      const parent = protoPara.parentNode!
+      const titleOf = (t: Element) => {
+        const list = tops()
+        const i = list.indexOf(paraOf(t)!)
+        for (let k = i - 1; k >= 0 && k >= i - 3; k--) {
+          if (/^\d+\.\s/.test(doc.paraText(list[k]).trim())) return list[k]
+        }
+        return null
+      }
+      const slots: { tbl: Element; title: Element | null }[] = perfTables.map((t) => ({
+        tbl: t,
+        title: titleOf(t),
+      }))
+      for (let i = n; i < slots.length; i++) {
+        doc.removeTable(slots[i].tbl)
+        if (slots[i].title) doc.remove(slots[i].title!)
+      }
+      let after: Node = paraOf(perfTables[perfTables.length - 1])!
+      for (let i = slots.length; i < n; i++) {
+        const t2 = slots[0].title ? (slots[0].title.cloneNode(true) as Element) : null
+        const p2 = protoPara.cloneNode(true) as Element
+        if (t2) {
+          parent.insertBefore(t2, after.nextSibling)
+          after = t2
+        }
+        parent.insertBefore(p2, after.nextSibling)
+        after = p2
+        const inner = Array.from(p2.getElementsByTagName('*')).find(
+          (e) => (e as Element).localName === 'tbl',
+        ) as Element
+        slots.push({ tbl: inner, title: t2 })
+      }
+
+      plan.performances.forEach((p, i) => {
+        const slot = slots[i]
+        if (!slot) return
+        if (slot.title) doc.setPara(slot.title, `${i + 1}. ${p.name}`)
+        const draft = ai?.perfs[p.id]
+        const eff = draft ? { ...p, activity: draft.activity, rubric: draft.rubric } : p
+        fillPerfTable(doc, slot.tbl, eff, i, warn, { red: !!draft })
+      })
+      did(`Ⅵ 수행평가 세부기준 ${n}벌 (예시 표 제거)`)
+    }
+  }
+
+  /* ── Ⅷ 결시생 — 정기시험 없으면 가. 삭제, 표 분기 정리 ── */
+  {
+    const scope = between('Ⅷ', 'Ⅸ')
+    if (plan.exam_count === 0) {
+      const ga = paraStartingWith(scope, '가.')
+      if (ga) {
+        doc.remove(ga)
+        // 나·다·라 → 가·나·다로 당긴다
+        const order = ['나.', '다.', '라.', '마.']
+        const to = ['가.', '나.', '다.', '라.']
+        order.forEach((k, i) => {
+          const p = paraStartingWith(between('Ⅷ', 'Ⅸ'), k)
+          if (p) doc.setPara(p, doc.paraText(p).replace(new RegExp(`^${k}`), to[i]))
+        })
+        did('Ⅷ 정기시험 없음 — 가. 삭제 후 번호 당김')
+      }
+    }
+    // 결시생 표: 정기시험을 보면 '수행평가 100%인 경우' 행을, 아니면 '기본점수가 있는 영역' 행을 지운다
+    const absent = tables.find((t) => doc.cellText(t, 0, 0) === '구분' && doc.cellText(t, 0, 1) === '성적 처리')
+    if (absent) {
+      const drop = plan.exam_count > 0 ? '수행평가 100%' : '기본점수가 있는 영역'
+      const rows = doc.rows(absent)
+      const hit = rows.findIndex((_, r) => (doc.cellText(absent, r, 1) ?? '').includes(drop))
+      if (hit > 0) {
+        absent.removeChild(rows[hit])
+        doc.renumber(absent)
+        did(`Ⅷ 결시생 표 · '${drop}' 분기 제거`)
+      }
+    }
+  }
+
+  /* ── Ⅹ 원격수업 — 학년·과목명만 ─────────────── */
+  {
+    const scope = between('Ⅹ', 'Ⅺ')
+    const p = scope.find((x) => doc.paraText(x).includes('학습 플랫폼'))
+    if (p) {
+      const reds = doc.redRuns(p)
+      // «O»학년 «과목명» … «O»학년 «과목명» 순서
+      doc.fillRed(
+        p,
+        reds.map((_, i) => (i % 2 === 0 ? String(plan.grade) : subject.name)),
+      )
+      did('Ⅹ 원격수업 · 학년·과목명')
+    } else warn('Ⅹ 학습 플랫폼 문단을 찾지 못했습니다')
+  }
+
+  /* ── Ⅺ 성취기준별 성취수준 ────────────────── */
+  {
+    const stdTables = tables.filter(
+      (t) => doc.cellText(t, 0, 0) === '성취기준' && (doc.cellText(t, 0, 1) ?? '').includes('성취기준별'),
+    )
+    const areasWithStd = subject.areas.filter((a) =>
+      subject.standards.some((s) => s.area_no === a.no),
+    )
+    if (stdTables.length === 0) warn('Ⅺ 성취수준 표를 찾지 못했습니다')
+    else {
+      const grades: ('A' | 'B' | 'C' | 'D' | 'E')[] =
+        subject.scale_type === 'LVL_3' ? ['A', 'B', 'C'] : ['A', 'B', 'C', 'D', 'E']
+      const titleOf = (t: Element) => {
+        const list = tops()
+        const i = list.indexOf(paraOf(t)!)
+        for (let k = i - 1; k >= 0 && k >= i - 3; k--) {
+          const s = doc.paraText(list[k]).trim()
+          if (/^\(\d+\)/.test(s)) return list[k]
+        }
+        return null
+      }
+      const slots = stdTables.map((t) => ({ tbl: t, title: titleOf(t) }))
+      // 남는 벌은 제거
+      for (let i = areasWithStd.length; i < slots.length; i++) {
+        doc.removeTable(slots[i].tbl)
+        if (slots[i].title) doc.remove(slots[i].title!)
+      }
+      // 모자라면 복제
+      const protoPara = paraOf(stdTables[0])!
+      const parent = protoPara.parentNode!
+      let after: Node = paraOf(stdTables[stdTables.length - 1])!
+      for (let i = slots.length; i < areasWithStd.length; i++) {
+        const t2 = slots[0].title ? (slots[0].title.cloneNode(true) as Element) : null
+        const p2 = protoPara.cloneNode(true) as Element
+        if (t2) {
+          parent.insertBefore(t2, after.nextSibling)
+          after = t2
+        }
+        parent.insertBefore(p2, after.nextSibling)
+        after = p2
+        const inner = Array.from(p2.getElementsByTagName('*')).find(
+          (e) => (e as Element).localName === 'tbl',
+        ) as Element
+        slots.push({ tbl: inner, title: t2 })
+      }
+
+      areasWithStd.forEach((area, ai2) => {
+        const { tbl, title } = slots[ai2]
+        if (title) doc.setPara(title, `(${ai2 + 1}) ${area.name}`)
+        const items = subject.standards.filter((s) => s.area_no === area.no)
+        doc.repeatRowBlock(tbl, 1, 5, items.length)
+        items.forEach((it, i) => {
+          const base = 1 + i * 5
+          doc.setCell(tbl, base, 0, it.text ? `${it.code} ${it.text}` : it.code)
+          grades.forEach((g, k) => {
+            const r = base + k
+            const off = k === 0 ? 1 : 0 // 첫 행은 성취기준 셀이 앞에 온다
+            doc.setCell(tbl, r, off, g)
+            doc.setCell(tbl, r, off + 1, it.levels[g] ?? '')
+          })
+          for (let k = grades.length; k < 5; k++) {
+            doc.setCell(tbl, base + k, 0, '')
+            doc.setCell(tbl, base + k, 1, '')
+          }
+        })
+      })
+      did(`Ⅺ 성취수준 ${areasWithStd.length}개 영역 · 성취기준 ${subject.standards.length}개`)
+    }
+  }
+
+  /* ── 학기단위 성취수준 (+ 최소 성취수준) ────── */
+  {
+    const semTbl = tables.find((t) => doc.cellText(t, 0, 1) === '학기단위 성취수준')
+    if (!semTbl) warn('학기단위 성취수준 표를 찾지 못했습니다')
+    else {
+      const grades: ('A' | 'B' | 'C' | 'D' | 'E')[] =
+        subject.scale_type === 'LVL_3' ? ['A', 'B', 'C'] : ['A', 'B', 'C', 'D', 'E']
+      const levels = ai?.sections.semesterLevels ?? subject.semester_levels
+      const rows = doc.rows(semTbl)
+      const minRow = rows.findIndex((_, r) => (doc.cellText(semTbl, r, 0) ?? '').includes('최소 성취수준'))
+
+      for (const g of grades) {
+        const r = rows.findIndex((_, k) => (doc.cellText(semTbl, k, 0) ?? '').trim() === g)
+        if (r > 0) doc.setCell(semTbl, r, 1, levels[g] ?? '', { red: !!ai })
+      }
+      // 3단계 과목은 D·E 행을 비운다
+      for (const g of ['D', 'E'] as const) {
+        if (grades.includes(g)) continue
+        const r = rows.findIndex((_, k) => (doc.cellText(semTbl, k, 0) ?? '').trim() === g)
+        if (r > 0) doc.setCell(semTbl, r, 1, '')
+      }
+
+      if (minRow > 0) {
+        if (subject.is_common) {
+          doc.setCell(semTbl, minRow, 1, ai?.sections.minLevel ?? subject.min_level ?? '', {
+            red: !!ai,
+          })
+        } else {
+          // 공통과목이 아니면 이 행만 삭제
+          semTbl.removeChild(doc.rows(semTbl)[minRow])
+          doc.renumber(semTbl)
+        }
+      }
+      did(
+        `학기단위 성취수준${subject.is_common ? ' + 최소 성취수준' : ' (최소 성취수준 행 제거)'}`,
+      )
+    }
+  }
+
+  /* ── 안내 메모 제거 ───────────────────────── */
+  const memos = doc.removeMemos()
+  did(`안내 메모 ${memos}개 제거`)
+
+  return { bytes: await doc.save(), report }
+}
+
+/* ── 수행평가 세부기준 표 채우기 ──────────────── */
+
+function fillPerfTable(
+  doc: HwpxDoc,
+  tbl: Element,
+  perf: Parameters<typeof rubricMax>[0],
+  index: number,
+  warn: (s: string) => void,
+  opts?: { red?: boolean },
+): void {
+  const rows = doc.rows(tbl)
+  const HEAD = rows.findIndex((_, r) => (doc.cellText(tbl, r, 0) ?? '').includes('평가 영역')) + 1
+  if (HEAD <= 0) {
+    warn(`${index + 1}번 수행평가 표에서 '평가 영역' 머리행을 찾지 못했습니다`)
+    return
+  }
+  const elements = perf.rubric.length
+  if (elements === 0) warn(`${index + 1}번 수행평가에 루브릭이 없습니다`)
+
+  doc.setCell(tbl, 0, 1, perf.standard_codes.join(', ') || '')
+  doc.setCell(tbl, 1, 1, perf.activity || '', { red: opts?.red })
+  doc.setCell(
+    tbl,
+    2,
+    1,
+    CHECK_ORDER.map((c) => `${perf.method_checks.includes(c) ? '■' : '□'}${c}`).join(' ') +
+      ` ${perf.method_checks.includes('기타') ? '■' : '□'}기타(방법명 기재)`,
+  )
+
+  const remark = rows[rows.length - 1]
+  const proto = [rows[HEAD + 2], rows[HEAD + 3]]
+  if (!proto[0] || !proto[1]) {
+    warn(`${index + 1}번 수행평가 표에 복제할 요소 블록이 없습니다`)
+    return
+  }
+  const protoClone = proto.map((r) => r.cloneNode(true) as Element)
+  const firstBlock = [rows[HEAD], rows[HEAD + 1]]
+
+  for (const tr of doc.rows(tbl).slice(HEAD)) tbl.removeChild(tr)
+  tbl.appendChild(firstBlock[0])
+  tbl.appendChild(firstBlock[1])
+  for (let i = 1; i < Math.max(1, elements); i++) {
+    for (const r of protoClone) tbl.appendChild(r.cloneNode(true) as Element)
+  }
+  tbl.appendChild(remark)
+  doc.renumber(tbl)
+
+  const span = Math.max(1, elements) * 2 + 1
+  const firstRowCells = childrenOf(doc.rows(tbl)[HEAD], 'tc')
+  for (const tc of [firstRowCells[0], firstRowCells[firstRowCells.length - 1]]) {
+    const cs = childrenOf(tc, 'cellSpan')[0]
+    if (cs && cs.getAttribute('rowSpan') !== '1') cs.setAttribute('rowSpan', String(span))
+  }
+
+  doc.setCell(tbl, HEAD, 0, `${perf.name}(${perf.max_score}점)`)
+  doc.setCell(tbl, HEAD, firstRowCells.length - 1, scoreSumLabels(perf))
+
+  perf.rubric.forEach((row, i) => {
+    const scoreRow = HEAD + i * 2
+    const textRow = scoreRow + 1
+    const off = i === 0 ? 1 : 0
+    doc.setCell(tbl, scoreRow, off, row.element)
+    row.levels.forEach((lv, k) => doc.setCell(tbl, scoreRow, off + 1 + k, String(lv.score)))
+    row.levels.forEach((lv, k) => doc.setCell(tbl, textRow, k, lv.text, { red: opts?.red }))
+  })
+
+  const remarkRow = doc.rows(tbl).length - 1
+  doc.setCell(
+    tbl,
+    remarkRow,
+    1,
+    `기본 점수(미응시, 미제출, 백지 제출, 불응, 추가 평가 불응, 표절) : ${perf.base_score}점`,
+  )
+}

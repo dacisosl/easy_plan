@@ -1,4 +1,4 @@
-# easy_plan — 교수학습 및 평가 운영계획서 생성기
+﻿# easy_plan — 교수학습 및 평가 운영계획서 생성기
 
 고등학교 교사가 **교수학습 및 평가 운영계획서**를 만들고 완성된 한글 문서(.hwpx)를
 내려받는 웹앱. 값을 한 번만 입력받아 문서 전체를 렌더링한다.
@@ -7,15 +7,24 @@
 채우면 나머지는 계산하고, 문장은 AI가 초안을 쓴다. "심화로 작성"을 누르면 상단에 5단계
 (과목 설정 → 단원 매핑 → 진도 설계 → 수행평가 → 내려받기)가 열린다.
 
-## 검토 방식 — 색이 곧 상태
+## 검토 방식 — 양식의 빨간 글씨를 그대로 쓴다
 
-앱 안의 체크리스트 대신 **문서 자체가 검토 장치**다.
+배포된 양식(`templates/form_2026.hwpx`)은 **교사가 바꿀 곳을 이미 빨간 글씨로 표시**해 두었다.
+이 앱은 그 빨간 스팬만 갈아끼운다. **검은 글씨는 한 글자도 건드리지 않는다.**
 
 | 색 | 뜻 | 교사가 할 일 |
 |---|---|---|
-| **검정** | 코드가 계산한 값 (비율·배점·성취기준·진도) | 로직 15규칙으로 이미 검증됨 |
-| **빨강** | AI 초안 (Ⅰ·Ⅱ·Ⅸ·Ⅹ·주차별 주안점·수행 활동·루브릭 서술) | 한글에서 읽고 검정으로 바꾸며 검토 |
+| **검정** | 양식의 학교 공통 문구 + 코드가 계산한 값 | 그대로 둔다 (로직 15규칙으로 검증됨) |
+| **빨강** | 양식이 표시한 자리에 채워 넣은 값·AI 초안 | 한글에서 읽고 검정으로 바꾸며 검토 |
 | **배경색** | 직접 채우는 칸 (예정시간·실시누계) | 한글에서 입력 |
+
+그래서 **Ⅶ 수행평가 시 유의 사항과 Ⅸ 평가 결과의 활용 방안은 빨간 글씨가 없어 통째로 그대로
+나간다.** 분량도 문체도 양식 그대로다. AI가 손대는 곳은 양식이 빨갛게 표시한 자리뿐이다 —
+Ⅰ 교수학습 운영계획, Ⅱ 가·나·다, Ⅲ-1 가·다·라, 진도표 주안점, 수행 활동·루브릭 서술,
+학기단위 성취수준.
+
+양식의 안내문은 전부 **메모**로 달려 있고, 완성본에서는 통째로 제거된다.
+(메모 안에도 `<hp:t>`가 있어서 본문과 섞어 읽으면 문서가 조용히 망가진다 — `doc.ts` ⑦번 규칙)
 
 ## 설계 원칙
 
@@ -77,21 +86,34 @@ npm run dev
 
 ## hwpx 생성
 
+템플릿은 배포된 양식 `templates/form_2026.hwpx` 하나다. 빈 템플릿을 따로 만들지 않는다.
+
 ```bash
-npm run template      # templates/reference.hwpx → templates/plan_blank.hwpx
-npm run render:test   # 가짜 AI 초안 포함 렌더 → out/test-render.hwpx (--no-ai로 제외)
+npm run render:test   # 시드 데이터로 → out/test-render.hwpx (--no-ai로 AI 문안 제외)
 npm run verify:hwpx out/test-render.hwpx
+node scripts/inspect-form.mjs out/test-render.hwpx --paras   # 빨강 «» 표시로 확인
 ```
 
 [`src/lib/hwpx/doc.ts`](src/lib/hwpx/doc.ts)는 파이썬 참조 구현의 여섯 가지 규칙
 (mimetype 무압축 선행 · 문단 단위 치환 · 빈 셀 `<hp:t>` 생성 · 문단 깊은 복사 ·
 rowAddr/rowCnt 갱신 · linesegarray 제거)에 더해:
 
-- **header.xml도 파싱한다** — 빨간 charPr(기존 것 복제 + textColor, 크기별 캐시)과
-  배경 borderFill(복제 + fillBrush, 테두리×색 캐시)을 추가하고 itemCnt를 갱신한다
+- **⑦ 메모 경계** — 안내문이 `<hp:ctrl>` 안 `fieldBegin type="MEMO"`에 들어 있다.
+  본문을 읽고 쓸 때 들어가면 안내문을 본문으로 오인하고 **덮어쓴다**.
+  `runsOutsideCtrl`을 반드시 거친다. 완성본에서는 `removeMemos()`로 통째 제거
+- **빨간 스팬 API** — `redRuns` / `fillRed` / `fillCellRed`. 채운 값은 빨강 그대로 둔다
+- **header.xml도 파싱한다** — 빨간 charPr 복제·배경 borderFill 복제(캐시) + itemCnt 갱신
 - **서식 상속** — 빈 셀에 run을 만들 때 `'0'` 대신 이웃 run의 charPr을 상속한다 (글씨체 통일)
-- Ⅴ 부기 문단(E·C·P 부여, 진로와직업 안내, 분할점수)은 과목 유형에 맞는 것만 남긴다.
-  원본 따옴표가 둥근따옴표(’E’)라 종류를 가리지 않고 매칭한다
+
+[`renderForm.ts`](src/lib/hwpx/renderForm.ts)가 양식별로 처리하는 조건부 편집:
+
+- 진도표는 양식이 앞쪽 4행 블록 + 뒤쪽 1행으로 섞여 있어 **1행/주 21주로 정규화**한다
+- Ⅴ 성취도 기준표 **5벌 중 과목 유형에 맞는 1벌만** 남기고 ※ 부기도 그에 맞게 정리
+- Ⅵ 수행평가 세부기준은 예시 표를 지우고 수행평가 개수만큼 맞춘다
+- Ⅷ 결시생 표는 정기시험 유무에 따라 분기 행 하나를 지운다
+- 학기단위 성취수준의 **최소 성취수준 행은 공통과목이 아니면 삭제**
+- Ⅲ은 1·2 묶음이 둘 다 가~차를 쓰므로 **구역을 나눠** 찾는다 (안 나누면 Ⅲ-2가 Ⅲ-1을 덮어쓴다)
+- 조사(와/과, 로/으로)는 [`josa()`](src/lib/derive.ts)로 앞말 끝소리에 맞춘다
 
 > **한글에서 직접 열어 확인할 것.** 표 테두리·셀 높이·빨강·배경색이 진짜 기준이다.
 
@@ -132,8 +154,8 @@ src/
     generateClient.ts  스테이지 순차 호출 → AiDraft 조립
     hwpx/         doc.ts(조작+서식) · render.ts(값→문서)
     importStandards.ts · subjectsSource.ts(xlsx 서버 캐시)
-scripts/          template · verify · render:test · seed:subject · test-simple-flow · test-export-api
-templates/        reference.hwpx(완성 예시) · plan_blank.hwpx(생성물)
+scripts/          verify · render:test · seed:subject · test-simple-flow · test-export-api
+templates/        form_2026.hwpx (배포된 양식 = 유일한 템플릿)
 ```
 
 ## 디자인

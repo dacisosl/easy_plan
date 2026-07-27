@@ -38,7 +38,9 @@ async function main() {
       { stage: 'sections', ...base },
     )
     if (s.status !== 200 || !s.json) throw new Error(`sections 실패 (${s.status})`)
-    console.log(`sections: model=${s.json.model} fallback=${s.json.fallback} · Ⅰ ${s.json.sections.I.length}문장 · Ⅹ ${s.json.sections.X.length}문장`)
+    console.log(
+      `sections: model=${s.json.model} fallback=${s.json.fallback} · Ⅰ ${s.json.sections.I.length} · Ⅱ ${s.json.sections.II.length} · Ⅲ-1 ${s.json.sections.III1.length} · 학기단위 ${Object.keys(s.json.sections.semesterLevels).length}`,
+    )
 
     const w = await post<{ fallback: boolean; weekly: AiDraft['weekly'] }>('/api/generate', {
       stage: 'weekly',

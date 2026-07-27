@@ -9,7 +9,6 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "template": "tsx scripts/make-template.ts",
     "verify:hwpx": "tsx scripts/verify-hwpx.ts",
     "render:test": "tsx scripts/test-render.ts",
     "seed:subject": "tsx scripts/seed-subject.ts",

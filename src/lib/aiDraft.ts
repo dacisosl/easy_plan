@@ -16,7 +16,6 @@ import type {
   SemesterPlan,
   Subject,
 } from '@/types'
-import { renderSection, type SentenceContext } from './derive'
 import { rubricFromChecks } from './autofill'
 
 export type GenerateStage = 'sections' | 'weekly' | 'perfs'
@@ -47,27 +46,61 @@ export function inputHash(plan: SemesterPlan, subject: Subject): string {
 
 /* ── 결정적 fallback ─────────────────────────── */
 
-function ctxOf(plan: SemesterPlan, subject: Subject, school: SchoolLayer): SentenceContext {
-  const hasRank = subject.type !== 'pass_fail' && subject.type !== 'arts_pe'
-  return { subject, plan, school, hasRank }
-}
-
 export function fallbackSections(
   plan: SemesterPlan,
   subject: Subject,
   school: SchoolLayer,
 ): AiDraft['sections'] {
-  const ctx = ctxOf(plan, subject, school)
-  const bank = (s: 'Ⅸ' | 'Ⅹ') => renderSection(s, ctx).map((x) => x.text)
+  void school
   const split = (s: string) => s.split(/\n+/).map((x) => x.trim()).filter(Boolean)
+  const n = subject.name
+  const teachers = Math.max(1, plan.teachers.length)
+  const plan1 = split(subject.teaching_plan)
+  const I =
+    plan1.length > 0
+      ? plan1
+      : [
+          `${n}의 핵심 아이디어를 중심으로 단원을 구성하고, 자료 탐구 · 토의 · 정리 순으로 지도한다.`,
+        ]
   return {
-    I: split(subject.teaching_plan),
-    II: split(subject.objectives),
-    IX: bank('Ⅸ'),
-    X: bank('Ⅹ'),
+    // 지도교사 수만큼 칸이 나뉜다 — 모자라면 같은 계획을 반복한다
+    I: Array.from({ length: teachers }, (_, i) => I[i] ?? I[0]),
+    II:
+      split(subject.objectives).slice(0, 3).length > 0
+        ? split(subject.objectives).slice(0, 3)
+        : [
+            `${n}의 핵심 개념과 원리를 이해하고 이를 설명하는 능력을 기르도록 한다.`,
+            `${n}에서 다루는 문제를 탐구하고 근거를 들어 자신의 견해를 제시하는 능력을 기르도록 한다.`,
+            `${n}의 학습 내용을 실생활 맥락에 적용하여 해결 방안을 모색하는 태도를 기르도록 한다.`,
+          ],
+    III1: [
+      `${n} 교과 내용 요소에 대한 단순한 지식 습득 여부보다는 ${n}의 교과 역량 함양과 핵심 아이디어에 대한 이해를 중심으로 평가한다.`,
+      `${n}에서 요구하는 탐구, 추론, 의사소통, 문제해결 등의 교과 역량을 평가한다.`,
+      `${n}의 지식⋅이해, 과정⋅기능, 가치⋅태도의 모든 측면에서 학생들의 성장이 있었는지를 평가하도록 한다.`,
+    ],
+    semesterLevels:
+      Object.keys(subject.semester_levels).length > 0
+        ? subject.semester_levels
+        : {
+            A: `${n}의 핵심 개념을 정확히 설명하고, 학습한 내용을 새로운 상황에 적용하여 문제를 해결할 수 있다.`,
+            B: `${n}의 핵심 개념을 설명하고, 학습한 내용을 활용하여 문제를 해결할 수 있다.`,
+            C: `${n}의 핵심 개념을 이해하고, 기본적인 문제를 해결할 수 있다.`,
+            D: `${n}의 핵심 개념을 부분적으로 이해하고, 안내된 절차에 따라 간단한 문제를 해결할 수 있다.`,
+            E: `${n}의 핵심 개념을 안내에 따라 확인하고, 간단한 문제를 따라 해결할 수 있다.`,
+          },
+    minLevel:
+      subject.min_level ??
+      `${n}의 핵심 개념을 안내에 따라 확인하고, 학습한 내용을 간단한 사례에 연결할 수 있다.`,
   }
 }
 
+/**
+ * 주안점 한 칸의 형식 — 양식 예시와 같은 4줄.
+ *   [수업방법]
+ *   -활동 하나
+ *   -활동 둘
+ *   [평가유형] 그 차시의 평가 내용
+ */
 export function fallbackWeekly(
   plan: SemesterPlan,
   subject: Subject,
@@ -75,18 +108,39 @@ export function fallbackWeekly(
 ): AiDraft['weekly'] {
   const unitById = new Map(subject.units.map((u) => [u.id, u]))
   const out: AiDraft['weekly'] = {}
+  const rotate = ['[강의식, 모둠협력수업]', '[문제해결학습, 모둠협력수업]', '[탐구학습, 발표활동]']
+  const evals = [
+    '[관찰평가] 모둠 활동 참여와 발언 내용을 중심으로 관찰 평가',
+    '[형성평가] 핵심 개념 확인 퀴즈 활동',
+    '[동료평가, 관찰평가] 경청과 공감적 반응 태도를 성찰하는 체크리스트 작성',
+  ]
+  let i = 0
   for (const w of school.calendar.weeks) {
     if (w.is_exam) continue
-    const units = (plan.distribution[w.no] ?? [])
-      .map((id) => unitById.get(id))
-      .filter(Boolean)
+    const units = (plan.distribution[w.no] ?? []).map((id) => unitById.get(id)).filter(Boolean)
     if (units.length === 0) continue
-    const names = units.map((u) => u!.name.replace(/^\d+\.\s*/, '')).join(', ')
+    const names = units.map((u) => u!.name.replace(/^\d+\.\s*/, ''))
+    // 조사(와/과)를 붙이면 단원명 끝소리에 따라 틀린다 — 조사가 필요 없게 쓴다
     out[w.no] = [
-      `[강의식, 모둠협력수업] ${names}의 핵심 개념을 파악하고 관련 사례를 탐구한다.`,
+      rotate[i % rotate.length],
+      `-${names[0]}의 핵심 개념과 용어 파악하기`,
+      `-${names[names.length - 1]} 관련 사례를 찾아 분석하기`,
+      evals[i % evals.length],
     ]
+    i++
   }
   return out
+}
+
+/**
+ * 수행평가가 잡힌 주에 넣는 줄 — 양식 메모가 요구하는 형식.
+ *   [수행평가(수행평가명)] 간단설명
+ * 안내 주에는 공지 문구를 넣는다.
+ */
+export function perfNoteLine(perfName: string, kind: '실시' | '안내', method: string): string {
+  return kind === '실시'
+    ? `[수행평가(${perfName})] ${method} 평가 실시`
+    : `[수행평가(${perfName}) 추정분할점수 공지] 평가 기준과 배점 안내`
 }
 
 export function fallbackPerf(perf: Performance): { activity: string; rubric: RubricRow[] } {
@@ -108,17 +162,25 @@ export function sectionsPrompt(plan: SemesterPlan, subject: Subject): {
   system: string
   user: string
 } {
+  const grades = subject.scale_type === 'LVL_3' ? 'A, B, C' : 'A, B, C, D, E'
   return {
-    system: `${TONE} JSON 하나만 출력한다: {"I": string[], "II": string[], "IX": string[], "X": string[]}. 각 배열 원소는 완성된 문장 하나다. 번호(가·나·다)를 붙이지 않는다 — 출력 시점에 코드가 붙인다.`,
+    system:
+      `${TONE} 양식에서 빨간 글씨로 표시된 '교사가 채울 곳'만 쓴다. ` +
+      `JSON 하나만 출력한다: ` +
+      `{"I": string[], "II": string[], "III1": string[], "semesterLevels": {"A": string, ...}, "minLevel": string}. ` +
+      `각 문장은 완성형이고 번호(가·나·다)를 붙이지 않는다 — 코드가 붙인다.`,
     user: [
-      `과목: ${subject.name} (${plan.grade}학년, ${plan.credit}학점)`,
-      `영역: ${subject.areas.map((a) => a.name).join(', ')}`,
-      `수행평가: ${plan.performances.map((p) => `${p.name}(${p.ratio}%)`).join(', ') || '없음'}`,
+      `과목: ${subject.name} (${plan.grade}학년, ${plan.credit}학점) · 지도교사 ${Math.max(1, plan.teachers.length)}인`,
+      `영역: ${subject.areas.map((a) => a.name).join(', ') || '(없음)'}`,
       '',
-      'I = 교수학습 운영계획 (2~4문장): 이 과목을 한 학기 어떻게 가르칠지.',
-      'II = 평가의 목적 (3~5문장): 무엇을 왜 평가하는지.',
-      'IX = 평가 결과의 활용 방안 (3~4문장).',
-      'X = 원격수업 운영 시 평가 계획 (3~5문장): 원격 전환 시 평가 조정·출결·직접 관찰 원칙.',
+      `I = 교수학습 운영계획. 지도교사 수(${Math.max(1, plan.teachers.length)})만큼 배열. 각 2~3문장. 표가 교사 수만큼 가로로 나뉜다.`,
+      'II = 평가의 목적 가·나·다에 해당하는 3문장. 과목 목표에서 나오는 내용. 각 문장은 "~ 능력을 기르도록 한다." 로 끝난다.',
+      'III1 = 평가의 기본 방향 가·다·라에 해당하는 3문장. 순서대로',
+      `  1) "${subject.name} 교과 내용 요소에 대한 단순한 지식 습득 여부보다는 …" 로 시작하는 문장`,
+      '  2) 이 교과의 핵심 역량을 나열하고 그것을 평가한다는 문장',
+      `  3) "${subject.name}의 지식⋅이해, 과정⋅기능, 가치⋅태도의 모든 측면에서 …" 로 시작하는 문장`,
+      `semesterLevels = 학기단위 성취수준 ${grades}. 상위 수준일수록 수행의 폭과 자립도가 커지게 구분되어야 한다.`,
+      'minLevel = 최소 성취수준. 한 학기가 끝났을 때 최소한으로 도달하기를 기대하는 정도를 한 문장으로.',
     ].join('\n'),
   }
 }
@@ -135,13 +197,20 @@ export function weeklyPrompt(
     .map((w) => {
       const units = (plan.distribution[w.no] ?? []).map((id) => unitById.get(id)!).filter(Boolean)
       const codes = units.flatMap((u) => u.standard_codes)
-      const stds = codes
-        .map((c) => `${c} ${stdByCode.get(c)?.text ?? ''}`.trim())
-        .join(' / ')
+      const stds = codes.map((c) => `${c} ${stdByCode.get(c)?.text ?? ''}`.trim()).join(' / ')
       return `${w.no}주: 단원 [${units.map((u) => u.name).join(', ')}] 성취기준 [${stds || '없음'}]`
     })
   return {
-    system: `${TONE} 진도표의 '수업 방법 및 수업·평가 연계의 주안점' 칸을 쓴다. JSON 하나만 출력한다: {"weekly": {"주차번호": string[]}}. 각 주는 1~3줄, 줄마다 "[수업방법] 활동 내용" 형태. 그 주 성취기준에 없는 내용을 넣지 않는다.`,
+    system:
+      `${TONE} 진도표의 '수업 방법 및 수업·평가 연계의 주안점' 칸을 쓴다. ` +
+      `JSON 하나만 출력한다: {"weekly": {"주차번호": string[]}}. ` +
+      `각 주는 정확히 4줄이다:\n` +
+      `  1줄: 대괄호로 수업 방법 — 강의식 · 모둠협력수업 · 문제해결학습 · 발표활동 · 탐구학습 중 1~3개. 예 "[강의식, 모둠협력수업]"\n` +
+      `  2·3줄: "-"로 시작하는 그 주 활동 두 개. 성취기준에서 곧바로 나오는 활동만.\n` +
+      `  4줄: 대괄호로 평가 유형 뒤에 그 차시 평가 내용 — 관찰평가 · 형성평가 · 자기평가 · 동료평가 중. 예 "[형성평가] 동서양 윤리 확인 퀴즈 활동"\n` +
+      `분량은 예시와 같은 정도로 맞춘다:\n` +
+      `[강의식, 모둠협력수업]\n-이론 윤리학, 실천 윤리학, 메타윤리학의 성격과 특징 파악하기\n-인간 본성에 대한 다양한 관점 분석하기\n[관찰평가] 윤리적 딜레마 속 도덕적 행동의 정당화와 관련된 토의활동 및 관찰 평가\n` +
+      `그 주 성취기준에 없는 내용을 넣지 않는다. 수행평가 문구는 코드가 따로 붙이니 쓰지 않는다.`,
     user: `과목: ${subject.name}\n\n${weeks.join('\n')}`,
   }
 }
@@ -185,19 +254,38 @@ export function parseSections(
   fb: AiDraft['sections'],
 ): { value: AiDraft['sections']; usedFallback: boolean } {
   const o = (raw ?? {}) as Record<string, unknown>
+  let miss = 0
   const pick = (k: string, f: string[]) => {
     const lines = asLines(o[k])
-    return lines.length > 0 ? lines : f
+    if (lines.length === 0) {
+      miss++
+      return f
+    }
+    return lines
   }
-  const value = {
-    I: pick('I', fb.I),
-    II: pick('II', fb.II),
-    IX: pick('IX', fb.IX),
-    X: pick('X', fb.X),
+  const lv = (o.semesterLevels ?? {}) as Record<string, unknown>
+  const levels: AiDraft['sections']['semesterLevels'] = {}
+  for (const g of ['A', 'B', 'C', 'D', 'E'] as const) {
+    const v = typeof lv[g] === 'string' ? (lv[g] as string).trim() : ''
+    if (v) levels[g] = v
+    else if (fb.semesterLevels[g]) {
+      levels[g] = fb.semesterLevels[g]
+      miss++
+    }
   }
-  const usedFallback =
-    value.I === fb.I || value.II === fb.II || value.IX === fb.IX || value.X === fb.X
-  return { value, usedFallback }
+  const minLevel =
+    typeof o.minLevel === 'string' && o.minLevel.trim() ? o.minLevel.trim() : fb.minLevel
+
+  return {
+    value: {
+      I: pick('I', fb.I),
+      II: pick('II', fb.II),
+      III1: pick('III1', fb.III1),
+      semesterLevels: levels,
+      minLevel,
+    },
+    usedFallback: miss > 0,
+  }
 }
 
 export function parseWeekly(

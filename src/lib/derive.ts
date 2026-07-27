@@ -287,6 +287,27 @@ export function scoreSumLabels(perf: Performance): string[] {
   return out
 }
 
+/**
+ * 한글 조사 — 앞말의 끝소리에 받침이 있는지로 고른다.
+ * 따옴표·괄호로 끝나면 그 안의 마지막 글자를 본다.
+ *
+ *   josa('제시', '와') → '와'   ·  josa('토론', '와') → '과'
+ *   josa('제시', '로') → '로'   ·  josa('토론', '로') → '으로'   (ㄹ 받침은 '로')
+ */
+export function josa(word: string, kind: '와' | '로' | '은' | '이'): string {
+  const m = word.replace(/[’'"”)\]』」\s]+$/u, '')
+  const last = m.at(-1) ?? ''
+  const code = last.charCodeAt(0)
+  if (!(code >= 0xac00 && code <= 0xd7a3)) {
+    // 한글이 아니면 받침 없는 쪽으로 (숫자·영문은 경우가 많아 단순화)
+    return { 와: '와', 로: '로', 은: '는', 이: '가' }[kind]
+  }
+  const jong = (code - 0xac00) % 28
+  if (kind === '로') return jong === 0 || jong === 8 ? '로' : '으로' // ㄹ 받침은 '로'
+  const has = jong !== 0
+  return { 와: has ? '과' : '와', 은: has ? '은' : '는', 이: has ? '이' : '가' }[kind]
+}
+
 const ROMAN = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ', 'Ⅺ', 'Ⅻ']
 
 /** 영역 번호 '01' → 'Ⅰ'. 진도표 단원명 윗줄과 Ⅺ 표 소제목에 쓴다. */
