@@ -220,9 +220,9 @@
     @apply text-[15px] font-semibold;
   }
 
-  /* 입력 칸 묶음 — 연한 바탕으로 '쓰는 자리'를 한 덩어리로 보여 준다 */
+  /* 입력 칸 묶음 — 테두리와 연한 바탕으로 '쓰는 자리'를 한 덩어리로 묶는다 */
   .field-box {
-    @apply rounded-control border border-line-soft p-3;
+    @apply rounded-control border border-line-input p-3.5;
     background: var(--color-field);
   }
 }
