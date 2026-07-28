@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 export function SubjectPicker({
   value,
   onPick,
-  placeholder = '과목명을 입력하세요',
+  placeholder = '과목명 검색 — 예) 대수, 통합사회1',
   autoFocus,
 }: {
   value: string
@@ -72,8 +72,22 @@ export function SubjectPicker({
 
   return (
     <div ref={rootRef} className="relative">
+      {/* 돋보기 — 여기가 '찾는 칸'이라는 걸 글로 설명하지 않아도 알게 한다 */}
+      <svg
+        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-4"
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
+        <circle cx="7" cy="7" r="4.5" />
+        <path d="M10.5 10.5 L14 14" strokeLinecap="round" />
+      </svg>
       <input
-        className="control"
+        className="control pl-9"
         value={query}
         placeholder={placeholder}
         autoFocus={autoFocus}

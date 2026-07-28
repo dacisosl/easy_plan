@@ -85,12 +85,18 @@ export function Home() {
   /* 과목을 고르기 전에는 과목 선택만 보여준다 */
   if (!plan || !subject) {
     return (
-      <Screen title="평가계획 만들기" subtitle="과목부터 고르면 시작합니다">
-        <Fieldset id="fs-basic" title="과목" hint="이름을 입력하면 목록이 뜹니다">
-          <SubjectPicker value="" onPick={pickSubject} autoFocus />
-          {loading && <span className="hint">성취기준을 불러오는 중…</span>}
-          {pickError && <span className="text-[13px] text-red">{pickError}</span>}
-        </Fieldset>
+      <Screen title="평가계획 만들기">
+        <section
+          id="fs-basic"
+          className="flex items-center gap-5 rounded-box border border-line-card bg-surface-sub px-6 py-4"
+        >
+          <h2 className="w-[132px] shrink-0 text-[15px] font-semibold">과목</h2>
+          <div className="min-w-0 flex-1">
+            <SubjectPicker value="" onPick={pickSubject} autoFocus />
+          </div>
+          {loading && <span className="shrink-0 text-[13px] text-ink-3">불러오는 중…</span>}
+        </section>
+        {pickError && <span className="text-[13px] text-red">{pickError}</span>}
         <RecentPlans plans={plans} subjects={subjects} onOpen={openPlan} onDelete={deletePlan} />
       </Screen>
     )
@@ -312,20 +318,25 @@ function PlanForm({
   const anchorPreview = plan.exams
     .map((e) => `${e.no}회 ${e.anchor_code ?? '미정'}까지`)
     .join(' · ')
-  const essayPreview = `지필 ${(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 ${perfEssayTotal(plan)}% = ${essay.toFixed(0)}% (기준 ${school.rules.essay_min}%)`
 
   return (
     <Screen
       title={subject.name}
       subtitle={`${school.calendars.find((c) => c.semester === plan.semester)?.year ?? ''}학년도 ${plan.semester}학기 · 성취기준 ${subject.standards.length}개`}
     >
-      {/* ① 기본 */}
-      <Fieldset id="fs-basic" title="기본" error={firstError('basic')}>
-        <div className="field-box grid grid-cols-[1.6fr_0.8fr_1fr_1.4fr_0.8fr] gap-3">
-          <Field label="과목">
-            <SubjectPicker value={subject.name} onPick={onPickSubject} />
-            {pickError && <span className="text-[13px] text-red">{pickError}</span>}
-          </Field>
+      {/* ① 기본 — 과목은 제목 옆 칩으로, 나머지만 입력한다 */}
+      <Fieldset
+        id="fs-basic"
+        title={
+          <span className="flex items-center gap-2.5">
+            기본
+            <SubjectChip name={subject.name} onChange={onPickSubject} />
+          </span>
+        }
+        error={firstError('basic')}
+      >
+        {pickError && <span className="text-[13px] text-red">{pickError}</span>}
+        <div className="field-box grid grid-cols-[0.8fr_1fr_1.6fr_0.8fr] gap-3">
           <Field label="학년">
             <select
               className="control"
@@ -468,82 +479,96 @@ function PlanForm({
         </Fieldset>
       )}
 
-      {/* ④ 수행평가 — 추가를 눌러야 입력 카드가 생긴다 */}
-      <Fieldset
-        id="fs-perf"
-        title="수행평가"
-        hint={
-          plan.performances.length > 0 ? `배정 ${perfSum}% / ${plan.perf_ratio}%` : undefined
-        }
-        action={
-          <button className="btn btn-sm btn-ghost" onClick={addPerf}>
-            + 추가
-          </button>
-        }
-        error={firstError('perf')}
-      >
-        {plan.performances.map((p) => (
-          <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
-        ))}
-      </Fieldset>
-
-      {/* ⑤ 서술·논술형 — 자동 배분을 요약으로 보여 준다 */}
+      {/*
+       * ④ 서술·논술형 — 펼친 채로 둔다. 여기가 비율을 정하는 자리이고,
+       * 수행평가를 여기서 늘리면 아래 수행평가 구획에 카드가 따라 생긴다.
+       */}
       <Fieldset
         id="fs-essay"
         title="서술·논술형 비율"
-        preview={essayPreview}
-        open={openSec.essay}
-        onToggle={() => toggleSec('essay')}
+        action={
+          <button className="btn btn-sm btn-ghost" onClick={addPerf}>
+            + 수행평가
+          </button>
+        }
         error={firstError('essay')}
       >
-        {/*
-         * 라벨 길이가 제각각이라 그냥 두면 칸 높이가 어긋난다.
-         * 라벨 자리를 두 줄로 고정하고 글자 크기를 줄여 언제나 같은 높이로 만든다.
-         */}
-        <div className="field-box grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
-          {plan.exams.map((e) => (
-            <label key={`x${e.no}`} className="flex flex-col gap-2">
-              <span className="label line-clamp-2 h-8 text-[12px] leading-4">
-                {e.no}회 정기시험 서술형
-              </span>
-              <input
-                className="control text-center"
-                type="number"
-                value={essayPct(e.no)}
-                onChange={(ev) => setEssayPct(e.no, Number(ev.target.value) || 0)}
-              />
-            </label>
-          ))}
-          {plan.performances.map((p) => (
-            <label key={p.id} className="flex flex-col gap-2">
-              <span
-                className="label line-clamp-2 h-8 text-[12px] leading-4"
-                title={p.name || '(이름 없음)'}
-              >
-                {p.name || '(이름 없음)'} ({p.ratio}%)
-              </span>
-              <input
-                className="control text-center"
-                type="number"
-                value={perfEssayRatio(p)}
-                onChange={(ev) => setPerfEssay(p.id, Number(ev.target.value) || 0)}
-              />
-            </label>
-          ))}
-        </div>
+        <div className="field-box flex flex-col gap-3">
+          {/* 라벨 길이가 제각각이라 두 줄로 고정하고 글자를 줄여 높이를 맞춘다 */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+            {plan.exams.map((e) => (
+              <label key={`x${e.no}`} className="flex flex-col gap-2">
+                <span className="label line-clamp-2 h-8 text-[12px] leading-4">
+                  {e.no}회 정기시험 서술형
+                </span>
+                <input
+                  className="control text-center"
+                  type="number"
+                  value={essayPct(e.no)}
+                  onChange={(ev) => setEssayPct(e.no, Number(ev.target.value) || 0)}
+                />
+              </label>
+            ))}
+            {plan.performances.map((p, i) => (
+              <label key={p.id} className="flex flex-col gap-2">
+                <span
+                  className="label line-clamp-2 h-8 text-[12px] leading-4"
+                  title={p.name || `수행평가 ${i + 1}`}
+                >
+                  {p.name || `수행평가 ${i + 1}`} ({p.ratio}%)
+                </span>
+                <input
+                  className="control text-center"
+                  type="number"
+                  value={perfEssayRatio(p)}
+                  onChange={(ev) => setPerfEssay(p.id, Number(ev.target.value) || 0)}
+                />
+              </label>
+            ))}
+          </div>
 
-        <div className="flex flex-wrap items-baseline gap-x-6 text-[13px]">
-          <span className="text-ink-2">
-            지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
-          </span>
-          <span
-            className={
-              essay < school.rules.essay_min ? 'font-semibold text-red' : 'font-semibold text-navy'
-            }
-          >
-            합계 {essay.toFixed(0)}% / {school.rules.essay_min}%
-          </span>
+          <div className="flex flex-wrap items-baseline gap-x-5 border-t border-line-input pt-3 text-[13px]">
+            <span className="text-ink-2">
+              지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
+            </span>
+            <span
+              className={
+                essay < school.rules.essay_min
+                  ? 'font-semibold text-red'
+                  : 'font-semibold text-navy'
+              }
+            >
+              합계 {essay.toFixed(0)}% / {school.rules.essay_min}%
+            </span>
+            <span className="text-ink-2">
+              수행 배정 {perfSum}% / {plan.perf_ratio}%
+            </span>
+          </div>
         </div>
+      </Fieldset>
+
+      {/* ⑤ 수행평가 — 맨 아래. 위에서 늘린 만큼 카드가 여기 생긴다 */}
+      <Fieldset
+        id="fs-perf"
+        title={
+          <span className="flex items-center gap-2.5">
+            수행평가
+            <button className="btn btn-sm btn-ghost" onClick={addPerf}>
+              + 추가
+            </button>
+          </span>
+        }
+        error={firstError('perf')}
+      >
+        {plan.performances.length === 0 ? (
+          <p className="text-[13px] text-ink-3">
+            위에서 &lsquo;+ 수행평가&rsquo;를 누르거나 여기서 추가하세요
+          </p>
+        ) : (
+          plan.performances.map((p) => (
+            <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
+          ))
+        )}
       </Fieldset>
 
       <div className="flex items-center gap-4 border-t border-line-soft pt-6">
@@ -560,6 +585,46 @@ function PlanForm({
         )}
       </div>
     </Screen>
+  )
+}
+
+/* ── 과목 칩 — 눌러야 바꾸는 칸이 열린다 ────────── */
+
+function SubjectChip({
+  name,
+  onChange,
+}: {
+  name: string
+  onChange: (name: string, listed: boolean) => void
+}) {
+  const [editing, setEditing] = useState(false)
+
+  if (editing) {
+    return (
+      <span className="inline-flex w-[320px] items-center gap-2">
+        <SubjectPicker
+          value={name}
+          autoFocus
+          onPick={(n, listed) => {
+            setEditing(false)
+            onChange(n, listed)
+          }}
+        />
+        <a className="shrink-0 text-[13px]" onClick={() => setEditing(false)}>
+          취소
+        </a>
+      </span>
+    )
+  }
+
+  return (
+    <button
+      className="chip chip-tag cursor-pointer text-[13px] font-medium"
+      onClick={() => setEditing(true)}
+      title="눌러서 과목 바꾸기"
+    >
+      {name} ▾
+    </button>
   )
 }
 

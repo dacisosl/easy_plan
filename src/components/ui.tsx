@@ -65,14 +65,20 @@ export function Fieldset({
 
   if (!expanded) {
     return (
-      <section id={id} className="rounded-box border border-line-card bg-surface-sub">
+      <section
+        id={id}
+        className="rounded-box border border-line-card bg-surface-sub transition-colors hover:border-navy-line-hover"
+      >
         <button
           type="button"
           onClick={onToggle}
-          className="flex w-full cursor-pointer items-center gap-4 border-0 bg-transparent px-6 py-4 text-left"
+          className="flex w-full cursor-pointer items-center gap-5 border-0 bg-transparent px-6 py-4 text-left"
         >
-          <h2 className="shrink-0 text-[15px] font-semibold">{title}</h2>
-          <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{preview}</span>
+          {/* 항목 이름은 폭을 고정해 세로로 줄을 맞추고, 내용은 흰 칸에 담아 또렷하게 */}
+          <h2 className="w-[132px] shrink-0 text-[15px] font-semibold">{title}</h2>
+          <span className="min-w-0 flex-1 truncate rounded-control border border-line-input bg-surface px-3 py-2 text-[14px] text-ink">
+            {preview}
+          </span>
           <span className="shrink-0 text-[13px] font-medium text-navy">직접 입력 ▾</span>
         </button>
       </section>
