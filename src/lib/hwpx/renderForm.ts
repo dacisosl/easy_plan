@@ -565,6 +565,21 @@ export async function renderForm(
         (mark(s, 'P') && subject.type === 'pass_fail')
       if (!keepNote && (s.startsWith('※') || s.startsWith('<'))) doc.remove(p)
     }
+
+    /*
+     * 표 넉 벌과 부기를 걷어내면 빈 문단만 줄줄이 남는다. 한글에서 열면
+     * 그만큼 허옇게 비어 보인다 — 표 바로 앞 한 줄만 여백으로 두고 지운다.
+     */
+    const rest = between('Ⅴ', 'Ⅵ')
+    const hasTbl = (p: Element) => p.getElementsByTagName('hp:tbl').length > 0
+    const tableAt = rest.findIndex(hasTbl)
+    let dropped = 0
+    rest.forEach((p, i) => {
+      if (hasTbl(p) || doc.paraText(p).trim() !== '') return
+      if (i === tableAt - 1) return
+      if (doc.remove(p)) dropped++
+    })
+    if (dropped > 0) did(`Ⅴ 빈 문단 ${dropped}개 정리`)
     did(`Ⅴ 성취도 기준표 (${['공통', '과탐실', '선택', '음미체', 'P/F'][keep]}만 유지)`)
   }
 
