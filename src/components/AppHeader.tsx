@@ -1,22 +1,31 @@
 'use client'
 
 /**
- * 앱 헤더 — 좌 로고+제목 / 중앙 현재 위치 / 우 액션.
+ * 앱 헤더 — 좌 로고+제목 / 중앙 간판 / 우 액션.
  *
- * 작성 흐름이 한 화면(홈)으로 합쳐져서 단계 표시가 없다.
- * 홈 → 생성 → 내려받기가 전부이고, 오류는 내려받기 화면에서 홈으로 되돌린다.
+ * 가운데 간판이 '지금 무엇을 만지고 있는지'를 늘 알려 준다.
+ * 화면 안에 큰 제목을 또 두지 않는 대신, 스크롤해도 따라오는 이 줄이 그 역할을 한다.
  */
 
 import { usePlanStore, type ScreenId } from '@/store/usePlanStore'
 
-const WHERE: Partial<Record<ScreenId, string>> = {
-  generating: '계획서를 만드는 중',
+const DOING: Record<ScreenId, string> = {
+  home: '편집 중',
+  generating: '만드는 중',
   download: '내려받기',
-  admin: '관리자 — 학사일정 · 배포표 · 학교 규칙',
+  admin: '관리자',
 }
 
 export function AppHeader() {
   const { screen, go, currentPlanId, startNew } = usePlanStore()
+  const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))
+  const subject = usePlanStore((s) => {
+    const p = s.plans.find((x) => x.id === s.currentPlanId)
+    return p ? s.subjects.find((x) => x.id === p.subject_id) : undefined
+  })
+  const year = usePlanStore(
+    (s) => s.school.calendars.find((c) => c.semester === plan?.semester)?.year,
+  )
 
   return (
     <header className="sticky top-0 z-10 border-b border-line-soft bg-white">
@@ -32,7 +41,21 @@ export function AppHeader() {
           <span className="text-sm font-semibold text-ink">평가계획 도우미</span>
         </button>
 
-        <span className="text-xs text-ink-3">{WHERE[screen] ?? ''}</span>
+        {plan && subject ? (
+          <div className="nameplate">
+            <span className="text-ink-2">
+              {year}학년도 {plan.semester}학기
+            </span>
+            <span className="text-ink-4">·</span>
+            <span className="font-semibold text-ink">{subject.name}</span>
+            <span className="ml-0.5 flex items-center gap-1.5 border-l border-line-input pl-2.5 text-navy">
+              <span className="pulse-dot" />
+              {DOING[screen]}
+            </span>
+          </div>
+        ) : (
+          <span className="text-xs text-ink-3">과목을 고르면 시작합니다</span>
+        )}
 
         <div className="flex items-center gap-2">
           {screen !== 'home' && (

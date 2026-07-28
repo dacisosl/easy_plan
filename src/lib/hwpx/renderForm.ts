@@ -15,6 +15,7 @@ import {
   calendarOf,
   classRange,
   essayTotal,
+  examRatioOf,
   examStandardCodes,
   isContinued,
   josa,
@@ -314,13 +315,14 @@ export async function renderForm(
   const evalTbl = tables.find((t) => doc.cellText(t, 0, 0) === '구분' && doc.rows(t).length >= 6)
   if (!evalTbl) warn('Ⅳ 평가 계획 표를 찾지 못했습니다')
   else {
-    const perExam = plan.exam_count > 0 ? plan.exam_ratio / plan.exam_count : 0
     const examParts = plan.exams.flatMap((e) => e.parts)
     const cols = [
       ...plan.exams.map((e) => {
         const codes = examStandardCodes(subject, plan.exams, e.no)
         const total = e.parts.reduce((s, p) => s + p.points, 0)
         const es = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
+        // 회차마다 반영 비율이 다를 수 있다 — 등분값을 쓰지 않는다
+        const perExam = examRatioOf(plan, e.no)
         return {
           title: `${e.no}회 정기시험`,
           ratio: `${perExam}%`,

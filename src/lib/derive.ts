@@ -201,7 +201,7 @@ export const MAX_PER_WEEK = 3
 export const MAX_SPAN = 2
 
 /** 진도 순서대로 편 성취기준 코드. 단원 순서가 진도 순서의 원천이다. */
-export function orderedStandardCodes(subject: Pick<Subject, 'units'>): string[] {
+export function orderedStandardCodes(subject: Pick<Subject, 'units' | 'standards'>): string[] {
   const seen = new Set<string>()
   const out: string[] = []
   for (const u of [...subject.units].sort((a, b) => a.order - b.order)) {
@@ -211,6 +211,28 @@ export function orderedStandardCodes(subject: Pick<Subject, 'units'>): string[] 
         out.push(c)
       }
     }
+  }
+
+  /*
+   * 어느 단원에도 안 들어간 성취기준을 여기서 건진다.
+   *
+   * 단원 구성이 성취기준을 빠뜨리면 그 기준은 진도에도, 시험 범위 목록에도
+   * 나타나지 않는다 — 교사가 화면에서 되찾을 방법이 없어진다.
+   * 끝에 몰아 붙이면 순서가 어긋나므로 원래 차례상 앞서는 것들 바로 뒤에 끼운다.
+   */
+  const natural = new Map(subject.standards.map((s, i) => [s.code, i]))
+  for (const s of subject.standards) {
+    if (seen.has(s.code)) continue
+    const mine = natural.get(s.code) ?? 0
+    let at = 0
+    for (let i = out.length - 1; i >= 0; i--) {
+      if ((natural.get(out[i]) ?? -1) < mine) {
+        at = i + 1
+        break
+      }
+    }
+    out.splice(at, 0, s.code)
+    seen.add(s.code)
   }
   return out
 }
@@ -262,7 +284,7 @@ function allocateSegment(codes: string[], weeks: Week[]): Record<number, string[
  * 반환: 주차 번호 → 성취기준 코드 목록. (파생값이지만 교사가 손댈 수 있어 학기 레이어에 저장한다)
  */
 export function distributeStandards(
-  subject: Pick<Subject, 'units'>,
+  subject: Pick<Subject, 'units' | 'standards'>,
   weeks: Week[],
   exams: { week: number; anchor_code: string | null }[],
 ): Record<number, string[]> {
@@ -306,7 +328,7 @@ export function isContinued(
   return (distribution[week - 1] ?? []).includes(code)
 }
 
-export function feasibility(subject: Pick<Subject, 'units'>, weeks: Week[]): Feasibility {
+export function feasibility(subject: Pick<Subject, 'units' | 'standards'>, weeks: Week[]): Feasibility {
   const tw = teachingWeeks(weeks).length
   const n = orderedStandardCodes(subject).length
   if (tw === 0) {
@@ -353,12 +375,36 @@ export function ratioTotal(plan: SemesterPlan, examRatio: number): number {
   return (plan.exam_count > 0 ? examRatio : 0) + perf
 }
 
+/**
+ * 회차 하나의 반영 비율(%).
+ *
+ * 교사가 회차별로 정했으면 그 값을, 안 정했으면 전체 정기시험 비율을 회차 수로 나눈다.
+ * 예전 저장분에는 회차별 값이 없어서 이 갈래가 필요하다.
+ */
+export function examRatioOf(plan: SemesterPlan, examNo: number): number {
+  const e = plan.exams.find((x) => x.no === examNo)
+  if (!e) return 0
+  if (e.ratio != null) return e.ratio
+  return plan.exam_count > 0 ? plan.exam_ratio / plan.exam_count : 0
+}
+
+/** 회차별 서술형 비율(%) — parts 배점에서 역산 */
+export function examEssayPct(plan: SemesterPlan, examNo: number): number {
+  const e = plan.exams.find((x) => x.no === examNo)
+  if (!e) return 0
+  const total = e.parts.reduce((s, p) => s + p.points, 0)
+  const essay = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
+  return total > 0 ? Math.round((essay / total) * 100) : 0
+}
+
 /** 서술·논술 합계 = 지필 서술형 + 수행 논술형 */
 export function essayTotal(plan: SemesterPlan, examRatio: number): number {
   const written = plan.exams.reduce((sum, e) => {
     const total = e.parts.reduce((s, p) => s + p.points, 0)
     const essay = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
-    return sum + (total > 0 ? (essay / total) * (examRatio / Math.max(1, plan.exam_count)) : 0)
+    // 회차별 비율이 있으면 그것을, 없으면 넘겨받은 전체 비율을 등분해 쓴다
+    const share = e.ratio != null ? e.ratio : examRatio / Math.max(1, plan.exam_count)
+    return sum + (total > 0 ? (essay / total) * share : 0)
   }, 0)
   return written + perfEssayTotal(plan)
 }
@@ -442,7 +488,7 @@ export function areaRoman(areaNo: string | null): string {
 
 /** 시험별 성취기준 범위 — 앵커 단원 → 단원 → 성취기준 코드 */
 export function examStandardCodes(
-  subject: Pick<Subject, 'units'>,
+  subject: Pick<Subject, 'units' | 'standards'>,
   exams: { no: number; anchor_code: string | null }[],
   examNo: number,
 ): string[] {

@@ -10,17 +10,26 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+/** 지금 Enter를 누르면 확정될 과목 */
+export interface SubjectDraft {
+  name: string
+  listed: boolean
+}
+
 export function SubjectPicker({
   value,
   onPick,
   placeholder = '과목명 검색 — 예) 대수, 통합사회1',
   autoFocus,
+  onDraftChange,
 }: {
   value: string
   /** listed = 성취기준 파일에 있는 과목인지 */
   onPick: (name: string, listed: boolean) => void
   placeholder?: string
   autoFocus?: boolean
+  /** 바깥에 '작성 시작' 버튼을 두고 싶을 때 — Enter와 같은 값을 넘겨준다 */
+  onDraftChange?: (draft: SubjectDraft | null) => void
 }) {
   const [names, setNames] = useState<string[] | null>(null)
   const [query, setQuery] = useState(value)
@@ -63,6 +72,18 @@ export function SubjectPicker({
   }, [names, query])
 
   const exact = names?.some((n) => squash(n) === squash(query)) ?? false
+
+  /* Enter가 확정할 값 — 바깥 버튼도 똑같은 값을 쓴다 */
+  const draft: SubjectDraft | null = !query.trim()
+    ? null
+    : matches[cursor]
+      ? { name: matches[cursor], listed: true }
+      : { name: query.trim(), listed: false }
+
+  useEffect(() => {
+    onDraftChange?.(draft)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.name, draft?.listed])
 
   const pick = (name: string, listed: boolean) => {
     setQuery(name)

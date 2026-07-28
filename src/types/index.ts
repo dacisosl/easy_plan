@@ -228,6 +228,11 @@ export interface Exam {
   week: number
   /** 이 시험까지 나가는 마지막 성취기준 코드 = 진도 배분 기준점 */
   anchor_code: string | null
+  /**
+   * 이 회차의 반영 비율(%). 정하지 않으면 plan.exam_ratio를 회차 수로 나눈다.
+   * 전체 정기시험 비율(plan.exam_ratio)은 이 값들의 합이다.
+   */
+  ratio?: number
   parts: ExamPart[]
 }
 

@@ -253,10 +253,84 @@
     @apply rounded-control border border-line-input p-3.5;
     background: var(--color-field);
   }
+
+  /*
+   * 상단 바 간판 — 지금 어느 과목의 몇 학기를 만지고 있는지 늘 보인다.
+   * 작게, 알약 모양으로. 화면 안 내용과 경쟁하지 않게 한다.
+   */
+  .nameplate {
+    @apply flex items-center gap-2 rounded-full border border-line-input px-3 py-[5px] text-[12px] leading-none;
+    background: var(--color-surface-sub);
+  }
+  /* 살아 있다는 신호 — 천천히 숨 쉬는 점 */
+  .pulse-dot {
+    @apply h-[6px] w-[6px] shrink-0 rounded-full bg-navy;
+    animation: pulse-dot 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.75);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  /*
+   * 화면 전환 — 과목을 고르면 고르기 화면이 물러나고 작성 화면이 올라온다.
+   * 페이지가 툭 바뀌지 않게 하려는 것뿐이라 짧게 끊는다.
+   */
+  .fade-in {
+    animation: fade-in 260ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+  .fade-out {
+    animation: fade-out 200ms ease-in both;
+    pointer-events: none;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+  }
+
+  /* 지우는 버튼 — 빨간 휴지통. 카드 오른쪽 위 모서리에 앉는다 */
+  .btn-trash {
+    @apply flex h-8 w-8 cursor-pointer items-center justify-center rounded-control border bg-surface text-red;
+    border-color: var(--color-red-line);
+  }
+  .btn-trash:hover {
+    @apply bg-red-hover;
+    border-color: var(--color-red-line-strong);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .control {
     transition: none;
+  }
+  .pulse-dot {
+    animation: none;
+    opacity: 0.8;
+  }
+  .fade-in,
+  .fade-out {
+    animation: none;
   }
 }

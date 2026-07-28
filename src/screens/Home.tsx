@@ -10,10 +10,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChipPicker, Field, Fieldset, Screen } from '@/components/ui'
-import { SubjectPicker } from '@/components/SubjectPicker'
+import { SubjectPicker, type SubjectDraft } from '@/components/SubjectPicker'
 import { usePlanStore } from '@/store/usePlanStore'
 import {
   essayTotal,
+  examEssayPct,
+  examRatioOf,
   monthWeekLabel,
   orderedStandardCodes,
   perfEssayRatio,
@@ -57,6 +59,10 @@ export function Home() {
 
   const [loading, setLoading] = useState(false)
   const [pickError, setPickError] = useState<string | null>(null)
+  /* 과목을 고르는 순간 고르기 화면을 물리고, 작성 화면이 올라오게 한다 */
+  const [leaving, setLeaving] = useState(false)
+  /* 검색칸에 뭔가 쓰면 '작성 시작' 버튼이 나온다 */
+  const [draft, setDraft] = useState<SubjectDraft | null>(null)
 
   /*
    * 새로고침하거나 창을 닫았다 와도 쓰던 계획서로 돌아온다.
@@ -73,6 +79,7 @@ export function Home() {
 
   const pickSubject = async (name: string, listed: boolean) => {
     setPickError(null)
+    if (!plan) setLeaving(true)
     if (!listed) {
       const id = upsertManualSubject(name)
       if (plan) patchPlan({ subject_id: id })
@@ -88,39 +95,59 @@ export function Home() {
       else newPlan(id)
       setTimeout(redistribute, 0)
     } catch (e) {
+      setLeaving(false)
       setPickError(e instanceof Error ? e.message : '과목을 불러오지 못했습니다')
     } finally {
       setLoading(false)
     }
   }
 
-  /* 과목을 고르기 전에는 과목 선택만 보여준다 */
+  /*
+   * 과목을 고르기 전에는 이것 하나만 보여준다.
+   * 할 일이 하나뿐인 화면이라 위로 붙이지 않고 가운데에 놓는다.
+   */
   if (!plan || !subject) {
     return (
-      <Screen title="평가계획 만들기">
-        {/* 첫 화면은 할 일이 하나뿐이다 — 상자도 검색창 크기에 맞춘다 */}
+      <div
+        className={`flex min-h-[calc(100vh-14rem)] flex-col items-center justify-center gap-4 ${
+          leaving ? 'fade-out' : 'fade-in'
+        }`}
+      >
         <section
           id="fs-basic"
-          className="flex w-fit items-center gap-4 rounded-box border border-line-card bg-surface-sub px-5 py-4"
+          className="flex items-center gap-4 rounded-box border border-line-card bg-surface-sub px-5 py-4"
         >
           <h2 className="shrink-0 text-[15px] font-semibold">과목</h2>
           <div className="w-[420px]">
-            <SubjectPicker value="" onPick={pickSubject} autoFocus />
+            <SubjectPicker value="" onPick={pickSubject} autoFocus onDraftChange={setDraft} />
           </div>
-          {loading && <span className="shrink-0 text-[13px] text-ink-3">불러오는 중…</span>}
+          {/* 쓰기 시작하면 나타난다 — Enter로도 같은 값이 확정된다 */}
+          {draft && (
+            <button
+              className="btn btn-sm btn-accent shrink-0 fade-in"
+              disabled={loading}
+              onClick={() => pickSubject(draft.name, draft.listed)}
+            >
+              작성 시작 →
+            </button>
+          )}
         </section>
-        {pickError && <span className="text-[13px] text-red">{pickError}</span>}
-      </Screen>
+        <span className="h-5 text-[13px] text-ink-3">
+          {pickError ? <span className="text-red">{pickError}</span> : loading ? '불러오는 중…' : ''}
+        </span>
+      </div>
     )
   }
 
   return (
-    <PlanForm
-      key={plan.id}
-      pickError={pickError}
-      onPickSubject={pickSubject}
-      onDone={() => go('generating')}
-    />
+    <div className="fade-in">
+      <PlanForm
+        key={plan.id}
+        pickError={pickError}
+        onPickSubject={pickSubject}
+        onDone={() => go('generating')}
+      />
+    </div>
   )
 }
 
@@ -157,19 +184,16 @@ function PlanForm({
     showErrors ? result.errors.find((e) => e.target === t)?.title : undefined
 
   /*
-   * 평가 구획은 자동값이 이미 들어 있으므로 접어 두고 요약만 보여 준다.
+   * 시험 범위는 자동으로 배정돼 있으므로 접어 두고 요약만 보여 준다.
    * '직접 입력'을 누르거나 오류가 걸리면 펼쳐진다.
    */
-  const [openSec, setOpenSec] = useState({ exam: false, anchor: false, essay: false })
-  const toggleSec = (k: 'exam' | 'anchor' | 'essay') =>
-    setOpenSec((s) => ({ ...s, [k]: !s[k] }))
+  const [openSec, setOpenSec] = useState({ anchor: false })
+  const toggleSec = (k: 'anchor') => setOpenSec((s) => ({ ...s, [k]: !s[k] }))
 
   /* 오류의 '고치기' — 구획을 펼치고 스크롤한 뒤 첫 입력에 포커스 */
   useEffect(() => {
     if (!focusTarget) return
-    if (focusTarget === 'exam' || focusTarget === 'anchor' || focusTarget === 'essay') {
-      setOpenSec((s) => ({ ...s, [focusTarget]: true }))
-    }
+    if (focusTarget === 'anchor') setOpenSec((s) => ({ ...s, anchor: true }))
     const t = setTimeout(() => {
       const el = document.getElementById(`fs-${focusTarget}`)
       el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -187,35 +211,54 @@ function PlanForm({
 
   const setExamCount = (n: 0 | 1 | 2) => {
     const examWeeks = weeks.filter((w) => w.is_exam).map((w) => w.no)
+    // 회차가 바뀌면 전체 비율을 회차 수로 다시 나눈다
+    const total = n === 0 ? 0 : plan.exam_count > 0 ? plan.exam_ratio : school.rules.exam_ratio
+    const each = n > 0 ? Math.round(total / n) : 0
     const exams = Array.from({ length: n }, (_, i) => ({
       no: i + 1,
       week: plan.exams[i]?.week ?? examWeeks[i] ?? examWeeks[examWeeks.length - 1] ?? 1,
       anchor_code: plan.exams[i]?.anchor_code ?? null,
+      ratio: each,
       parts: plan.exams[i]?.parts ?? [
         { kind: '선택형' as const, count: 20, points: 70 },
         { kind: '서술형' as const, count: 5, points: 30 },
       ],
     }))
-    patchPlan({
-      exam_count: n,
-      exams,
-      ...(n === 0 ? { exam_ratio: 0, perf_ratio: 100 } : {}),
-    })
+    const sum = each * n
+    patchPlan({ exam_count: n, exams, exam_ratio: sum, perf_ratio: 100 - sum })
     setTimeout(redistribute, 0)
+    setTimeout(rebalancePerfRatios, 0)
   }
 
   /**
-   * 정기시험 : 수행평가 비율.
+   * 회차 하나의 반영 비율.
    *
-   * 시험이 있는데 정기시험 0%면 서술형을 아무리 올려도 반영되지 않는다.
-   * 그런 상태를 만들 수 없게 시험이 있으면 최소 1%를 남긴다.
-   * 수행 100%를 원하면 '수행 100%' 버튼으로 시험 자체를 없애야 한다.
+   * 전체 정기시험 비율은 회차 값들의 합이고, 수행평가 몫은 그 나머지다.
+   * 시험이 있는데 0%면 서술형을 아무리 올려도 반영되지 않으므로 최소 1%를 남긴다.
+   * 수행 100%를 원하면 '수행 100%' 칩으로 시험 자체를 없애야 한다.
    */
-  const setRatio = (exam: number) => {
-    const floor = plan.exam_count > 0 ? 1 : 0
-    const e = Math.max(floor, Math.min(100, Math.round(exam) || 0))
-    patchPlan({ exam_ratio: e, perf_ratio: 100 - e })
+  const setExamRatio = (no: number, v: number) => {
+    const val = Math.max(1, Math.min(100, Math.round(v) || 0))
+    const exams = plan.exams.map((e) => ({
+      ...e,
+      ratio: e.no === no ? val : examRatioOf(plan, e.no),
+    }))
+    const sum = Math.min(100, exams.reduce((s, e) => s + (e.ratio ?? 0), 0))
+    patchPlan({ exams, exam_ratio: sum, perf_ratio: 100 - sum })
     setTimeout(rebalancePerfRatios, 0)
+  }
+
+  /** 수행평가 하나의 반영 비율 — 여기서 정한 값은 다시 자동 배분하지 않는다 */
+  const setPerfRatio = (perfId: string, v: number) => {
+    const p = plan.performances.find((x) => x.id === perfId)
+    if (!p) return
+    upsertPerf({
+      id: p.id,
+      name: p.name,
+      intent: p.intent ?? p.activity ?? '',
+      week: p.week,
+      ratio: Math.max(0, Math.min(100, Math.round(v) || 0)),
+    })
   }
 
   /** 수행평가 비율 합이 배정액과 맞고, 한 영역이 상한을 넘지 않게 다시 나눈다 */
@@ -277,12 +320,21 @@ function PlanForm({
 
   /* ── 서술·논술형 ──────────────────────────── */
 
-  const essayPct = (examNo: number) => {
-    const e = plan.exams.find((x) => x.no === examNo)
-    if (!e) return 0
-    const total = e.parts.reduce((s, p) => s + p.points, 0)
-    const es = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
-    return total > 0 ? Math.round((es / total) * 100) : 0
+  /**
+   * 회차의 서술형을 '전체 성적에서 차지하는 %'로 받는다.
+   *
+   * 표 안에서 수행평가 쪽 서·논술은 전체 기준 %인데 정기시험만 시험지 안 기준 %면
+   * 같은 열의 숫자끼리 뜻이 달라진다. 합계가 30%를 넘는지 눈으로 못 세게 되므로
+   * 입력은 전체 기준으로 받고, 시험지 안 배점으로는 여기서 되돌린다.
+   */
+  const examEssayAbs = (examNo: number) =>
+    Math.round((examEssayPct(plan, examNo) / 100) * examRatioOf(plan, examNo))
+
+  const setExamEssayAbs = (examNo: number, abs: number) => {
+    const ratio = examRatioOf(plan, examNo)
+    if (ratio <= 0) return
+    const capped = Math.max(0, Math.min(ratio, Math.round(abs) || 0))
+    setEssayPct(examNo, Math.round((capped / ratio) * 100))
   }
 
   const setEssayPct = (examNo: number, pct: number) => {
@@ -318,30 +370,29 @@ function PlanForm({
 
   const essay = essayTotal(plan, plan.exam_ratio)
   const perfSum = plan.performances.reduce((s, p) => s + p.ratio, 0)
+  const ratioSum = plan.exam_ratio + perfSum
   const ready = plan.teachers.length > 0 && plan.performances.some((p) => p.name.trim())
 
-  /* 접힌 구획의 미리보기 — 지금 적용돼 있는 자동값을 그대로 요약한다 */
-  const examPreview =
-    plan.exam_count === 0
-      ? '정기시험 없음 · 수행평가 100%'
-      : `${plan.exam_count}회 · 정기 ${plan.exam_ratio}% : 수행 ${plan.perf_ratio}%${
-          perfSum !== plan.perf_ratio ? ` · 배정 ${perfSum}/${plan.perf_ratio}%` : ''
-        }`
-  const anchorPreview = plan.exams
-    .map((e) => `${e.no}회 ${e.anchor_code ?? '미정'}까지`)
-    .join(' · ')
+  /* 접힌 구획의 미리보기 — 회차마다 한 줄씩. 가로로 이으면 어느 회차 범위인지 흐려진다 */
+  const anchorPreview = (
+    <div className="flex w-fit max-w-full flex-col gap-1 rounded-control border border-line-input bg-surface px-3 py-2 text-[14px] text-ink">
+      {plan.exams.map((e) => (
+        <span key={e.no} className="truncate">
+          {e.no}회 정기고사 시험범위: {e.anchor_code ?? '미정'}까지
+        </span>
+      ))}
+    </div>
+  )
 
   return (
-    <Screen
-      title={subject.name}
-      subtitle={`${school.calendars.find((c) => c.semester === plan.semester)?.year ?? ''}학년도 ${plan.semester}학기 · 성취기준 ${subject.standards.length}개`}
-    >
+    /* 제목은 상단 바 간판이 대신한다 — 화면 안에 또 두지 않는다 */
+    <Screen>
       {/* ① 기본 — 과목은 제목 옆 칩으로, 나머지만 입력한다 */}
       <Fieldset
         id="fs-basic"
         title={
           <span className="flex items-center gap-2.5">
-            기본
+            기본설정
             <SubjectChip name={subject.name} onChange={onPickSubject} />
           </span>
         }
@@ -402,102 +453,93 @@ function PlanForm({
         </div>
       </Fieldset>
 
-      {/* ② 정기시험 · 비율 — 자동값이 들어 있어 접어 두고 요약만 보여 준다 */}
-      <Fieldset
+      {/*
+       * ② 정기시험 — 횟수와 범위는 한 몸이다. 횟수를 바꾸면 범위도 따라 바뀌므로
+       * 구획을 나누지 않고 한 상자 안에 위아래로 놓는다.
+       */}
+      <section
         id="fs-exam"
-        title="정기시험과 반영 비율"
-        preview={examPreview}
-        open={openSec.exam}
-        onToggle={() => toggleSec('exam')}
-        action={
-          <button className="btn btn-sm btn-ghost" onClick={() => setExamCount(0)}>
-            수행 100%
-          </button>
-        }
-        error={firstError('exam')}
+        className={`flex flex-col gap-3 rounded-box border px-6 py-4 ${
+          firstError('exam') || firstError('anchor')
+            ? 'border-red-line bg-red-bg/40'
+            : 'border-line-card bg-surface-sub'
+        }`}
       >
-        <div className="field-box grid grid-cols-[1fr_1fr_1fr_1.2fr] gap-3">
-          <Field label="정기시험 횟수">
-            <select
-              className="control"
-              value={plan.exam_count}
-              onChange={(e) => setExamCount(Number(e.target.value) as 0 | 1 | 2)}
+        <div className="flex items-center gap-5">
+          <h2 className="fs-title w-[148px] shrink-0">정기시험</h2>
+          <div className="flex flex-1 flex-wrap items-center gap-2">
+            {([2, 1] as const).map((n) => (
+              <button
+                key={n}
+                className={`chip ${plan.exam_count === n ? 'chip-on' : ''}`}
+                onClick={() => setExamCount(n)}
+              >
+                {n}회
+              </button>
+            ))}
+            <button
+              className={`chip ${plan.exam_count === 0 ? 'chip-on' : ''}`}
+              onClick={() => setExamCount(0)}
             >
-              {[2, 1, 0].map((n) => (
-                <option key={n} value={n}>
-                  {n}회
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="정기시험 (%)">
-            <input
-              className="control text-center"
-              type="number"
-              value={plan.exam_ratio}
-              disabled={plan.exam_count === 0}
-              onChange={(e) => setRatio(Number(e.target.value) || 0)}
-            />
-          </Field>
-          <Field label="수행평가 (%)">
-            <input
-              className="control text-center"
-              type="number"
-              value={plan.perf_ratio}
-              onChange={(e) => setRatio(100 - (Number(e.target.value) || 0))}
-            />
-          </Field>
-          <Field label="배정">
-            <div className="flex h-11 items-center text-[15px]">
-              {perfSum}% / {plan.perf_ratio}%
-              {perfSum !== plan.perf_ratio && (
-                <span className="ml-2 text-[13px] text-amber">
-                  {plan.perf_ratio - perfSum > 0 ? '남음' : '초과'}
-                </span>
+              수행 100%
+            </button>
+          </div>
+        </div>
+
+        {/* 시험 범위 — 자동 배정돼 있으므로 평소엔 읽기만 하고, 고칠 때만 펼친다 */}
+        {plan.exam_count > 0 && (
+          <div id="fs-anchor" className="flex items-start gap-5">
+            <h3 className="fs-title w-[148px] shrink-0 pt-1.5">시험범위</h3>
+            {/* 미리보기는 글자 길이만큼만 차지하고, 고치는 버튼이 바로 뒤에 붙는다 */}
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              {openSec.anchor || firstError('anchor') ? (
+                <div className="field-box grid flex-1 grid-cols-2 gap-3">
+                  {plan.exams.map((e) => (
+                    <Field key={e.no} label={`${e.no}회 정기고사 (${e.week}주) 시험범위`}>
+                      <select
+                        className="control"
+                        value={e.anchor_code ?? ''}
+                        onChange={(ev) => setAnchor(e.no, ev.target.value)}
+                      >
+                        <option value="">— 고르세요 —</option>
+                        {codes.map((c) => (
+                          <option key={c} value={c}>
+                            {c} {stdText(c).slice(0, 30)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  ))}
+                </div>
+              ) : (
+                anchorPreview
+              )}
+              {!firstError('anchor') && (
+                <button
+                  className="btn btn-sm btn-accent shrink-0"
+                  onClick={() => toggleSec('anchor')}
+                >
+                  {openSec.anchor ? '접기 ▴' : '직접 입력 ▾'}
+                </button>
               )}
             </div>
-          </Field>
-        </div>
-      </Fieldset>
-
-      {/* ③ 시험 범위 (앵커) — 자동 배정된 앵커를 요약으로 보여 준다 */}
-      {plan.exam_count > 0 && (
-        <Fieldset
-          id="fs-anchor"
-          title="시험 범위"
-          preview={anchorPreview}
-          open={openSec.anchor}
-          onToggle={() => toggleSec('anchor')}
-          error={firstError('anchor')}
-        >
-          <div className="field-box grid grid-cols-2 gap-3">
-            {plan.exams.map((e) => (
-              <Field key={e.no} label={`${e.no}회 (${e.week}주) 마지막 성취기준`}>
-                <select
-                  className="control"
-                  value={e.anchor_code ?? ''}
-                  onChange={(ev) => setAnchor(e.no, ev.target.value)}
-                >
-                  <option value="">— 고르세요 —</option>
-                  {codes.map((c) => (
-                    <option key={c} value={c}>
-                      {c} {stdText(c).slice(0, 30)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            ))}
           </div>
-        </Fieldset>
-      )}
+        )}
+
+        {(firstError('exam') || firstError('anchor')) && (
+          <span className="pl-[168px] text-[13px] text-red">
+            {firstError('exam') ?? firstError('anchor')}
+          </span>
+        )}
+      </section>
 
       {/*
-       * ④ 서술·논술형 — 펼친 채로 둔다. 여기가 비율을 정하는 자리이고,
-       * 수행평가를 여기서 늘리면 아래 수행평가 구획에 카드가 따라 생긴다.
+       * ④ 비율 조정 — 반영 비율과 서·논술 비율을 항목마다 한 줄에서 정한다.
+       * 여기서 수행평가를 늘리면 아래 수행평가 구획에 카드가 따라 생긴다.
        */}
       <Fieldset
         id="fs-essay"
-        title="서술·논술형 비율"
+        title="비율 조정"
         action={
           <button className="btn btn-sm btn-accent" onClick={addPerf}>
             + 수행평가
@@ -505,43 +547,42 @@ function PlanForm({
         }
         error={firstError('essay')}
       >
-        <div className="field-box flex flex-col gap-3">
-          {/* 라벨 길이가 제각각이라 두 줄로 고정하고 글자를 줄여 높이를 맞춘다 */}
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+        <div className="field-box flex flex-col gap-2">
+          {/*
+           * 두 열로 놓는다 — 한 열이면 이름과 숫자 칸 사이가 허허벌판이 된다.
+           * 두 숫자 모두 '전체 성적에서 차지하는 %'라 세로로 훑으며 더할 수 있다.
+           */}
+          <div className="grid gap-x-7 gap-y-2 lg:grid-cols-2">
+            <RatioHead />
+            <RatioHead className="hidden lg:grid" />
+
             {plan.exams.map((e) => (
-              <label key={`x${e.no}`} className="flex flex-col gap-2">
-                <span className="label line-clamp-2 h-8 text-[12px] leading-4">
-                  {e.no}회 정기시험 서술형
-                </span>
-                <input
-                  className="control text-center"
-                  type="number"
-                  value={essayPct(e.no)}
-                  onChange={(ev) => setEssayPct(e.no, Number(ev.target.value) || 0)}
-                />
-              </label>
+              <RatioRow
+                key={`x${e.no}`}
+                label={`${e.no}회 정기시험`}
+                ratio={examRatioOf(plan, e.no)}
+                essay={examEssayAbs(e.no)}
+                onRatio={(v) => setExamRatio(e.no, v)}
+                onEssay={(v) => setExamEssayAbs(e.no, v)}
+              />
             ))}
+
             {plan.performances.map((p, i) => (
-              <label key={p.id} className="flex flex-col gap-2">
-                <span
-                  className="label line-clamp-2 h-8 text-[12px] leading-4"
-                  title={p.name || `수행평가 ${i + 1}`}
-                >
-                  {p.name || `수행평가 ${i + 1}`} ({p.ratio}%)
-                </span>
-                <input
-                  className="control text-center"
-                  type="number"
-                  value={perfEssayRatio(p)}
-                  onChange={(ev) => setPerfEssay(p.id, Number(ev.target.value) || 0)}
-                />
-              </label>
+              <RatioRow
+                key={p.id}
+                label={p.name}
+                placeholder={`수행평가 ${i + 1}`}
+                ratio={p.ratio}
+                essay={perfEssayRatio(p)}
+                onRatio={(v) => setPerfRatio(p.id, v)}
+                onEssay={(v) => setPerfEssay(p.id, v)}
+              />
             ))}
           </div>
 
           <div className="flex flex-wrap items-baseline gap-x-5 border-t border-line-input pt-3 text-[13px]">
-            <span className="text-ink-2">
-              지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
+            <span className={ratioSum === 100 ? 'text-ink-2' : 'font-semibold text-amber'}>
+              반영 합계 {ratioSum}%{ratioSum !== 100 && (ratioSum < 100 ? ' · 모자람' : ' · 넘침')}
             </span>
             <span
               className={
@@ -550,10 +591,10 @@ function PlanForm({
                   : 'font-semibold text-navy'
               }
             >
-              합계 {essay.toFixed(0)}% / {school.rules.essay_min}%
+              서·논술 {essay.toFixed(0)}% / {school.rules.essay_min}%
             </span>
             <span className="text-ink-2">
-              수행 배정 {perfSum}% / {plan.perf_ratio}%
+              지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
             </span>
           </div>
         </div>
@@ -597,6 +638,57 @@ function PlanForm({
         )}
       </div>
     </Screen>
+  )
+}
+
+/* ── 비율 조정 한 줄 ──────────────────────────── */
+
+const RATIO_COLS = 'grid grid-cols-[1fr_72px_72px] items-center gap-2'
+
+function RatioHead({ className = '' }: { className?: string }) {
+  return (
+    <div className={`${RATIO_COLS} px-1 ${className}`}>
+      <span className="label">항목</span>
+      <span className="label text-center">반영 비율</span>
+      <span className="label text-center">서·논술</span>
+    </div>
+  )
+}
+
+function RatioRow({
+  label,
+  placeholder,
+  ratio,
+  essay,
+  onRatio,
+  onEssay,
+}: {
+  label: string
+  /** 이름을 아직 안 쓴 수행평가에 붙일 임시 이름 */
+  placeholder?: string
+  ratio: number
+  essay: number
+  onRatio: (v: number) => void
+  onEssay: (v: number) => void
+}) {
+  return (
+    <div className={RATIO_COLS}>
+      <span className="truncate pl-1 text-[14px]" title={label || placeholder}>
+        {label || <span className="text-ink-3">{placeholder}</span>}
+      </span>
+      <input
+        className="control text-center"
+        type="number"
+        value={ratio}
+        onChange={(e) => onRatio(Number(e.target.value) || 0)}
+      />
+      <input
+        className="control text-center"
+        type="number"
+        value={essay}
+        onChange={(e) => onEssay(Number(e.target.value) || 0)}
+      />
+    </div>
   )
 }
 
@@ -671,9 +763,31 @@ function PerfCard({
   const stdText = (c: string) => subject.standards.find((s) => s.code === c)?.text ?? ''
 
   return (
-    <div className="field-box flex flex-col gap-3">
-      {/* 라벨 높이를 고정해 칸끼리 어긋나지 않게 한다 */}
-      <div className="grid grid-cols-[1.8fr_1fr_0.7fr_auto] items-start gap-3">
+    <div className="field-box relative flex flex-col gap-3">
+      {/* 지우기는 오른쪽 위 모서리에 — 입력 칸 사이에 두면 잘못 누른다 */}
+      <button
+        className="btn-trash absolute top-2.5 right-2.5"
+        onClick={() => removePerf(perf.id)}
+        title="이 수행평가 지우기"
+        aria-label="이 수행평가 지우기"
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.2a1 1 0 0 0 1 .8h4.6a1 1 0 0 0 1-.8L12 4M6.5 7v4M9.5 7v4" />
+        </svg>
+      </button>
+
+      {/* 라벨 높이를 고정해 칸끼리 어긋나지 않게 한다. 비율은 '비율 조정'에서 정한다 */}
+      <div className="grid grid-cols-[1.6fr_1fr_auto] items-start gap-3 pr-11">
         <label className="flex flex-col gap-2">
           <span className="label flex h-5 items-center gap-2">
             명칭
@@ -710,28 +824,25 @@ function PerfCard({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-2">
-          <span className="label flex h-5 items-center">비율 (%)</span>
-          <input
-            className="control text-center"
-            type="number"
-            max={school.rules.perf_area_max}
-            value={perf.ratio}
-            onChange={(e) =>
-              upsertPerf({
-                id: perf.id,
-                name,
-                intent,
-                week: perf.week,
-                ratio: Number(e.target.value) || 0,
-              })
-            }
-          />
-        </label>
         <div className="flex flex-col gap-2">
           <span className="label h-5" aria-hidden />
-          <button className="btn btn-sm btn-ghost" onClick={() => removePerf(perf.id)}>
-            삭제
+          {/* 성취기준 — 안 고르면 진도에 맞춰 자동으로 채운다 */}
+          <button className="btn btn-sm btn-accent" onClick={() => setPicking(true)}>
+            성취기준 수정
+            <svg
+              className="ml-1.5 inline-block align-[-2px]"
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M11.5 2.5a1.6 1.6 0 0 1 2.3 2.3L5.6 13 2.5 13.5 3 10.4z" />
+            </svg>
           </button>
         </div>
       </div>
@@ -749,25 +860,7 @@ function PerfCard({
         />
       </label>
 
-      {/* 성취기준 — 안 고르면 진도에 맞춰 자동으로 채운다 */}
       <div className="flex flex-wrap items-center gap-2">
-        <button className="btn btn-sm btn-accent" onClick={() => setPicking(true)}>
-          성취기준 수정 · {perf.standard_codes.length}
-          <svg
-            className="ml-1.5 inline-block align-[-2px]"
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M11.5 2.5a1.6 1.6 0 0 1 2.3 2.3L5.6 13 2.5 13.5 3 10.4z" />
-          </svg>
-        </button>
         {perf.standard_codes.map((c) => (
           <span key={c} className="chip chip-tag" title={stdText(c)}>
             {c}

@@ -12,7 +12,7 @@ import type {
 } from '@/types'
 import { SCHOOL_SEED } from '@/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '@/data/subject'
-import { distributeStandards, weeksOf } from '@/lib/derive'
+import { distributeStandards, orderedStandardCodes, weeksOf } from '@/lib/derive'
 import { buildPerformance } from '@/lib/autofill'
 import type { ImportedSubject } from '@/lib/importStandards'
 import { unitsFromAreas } from '@/lib/importStandards'
@@ -376,7 +376,7 @@ export const usePlanStore = create<State & Actions>()(
     }),
     {
       name: 'easy-plan',
-      version: 3,
+      version: 4,
       /**
        * v3 — 진도 배분이 단원 id에서 성취기준 코드로 바뀌었고,
        * 학사일정이 학기별 배열이 되었으며, 비율이 학기 레이어로 내려왔다.
@@ -386,7 +386,31 @@ export const usePlanStore = create<State & Actions>()(
        */
       migrate: (persisted, version) => {
         const state = persisted as Partial<State> & Record<string, unknown>
-        if (version >= 3) return state as unknown as State & Actions
+        if (version >= 4) return state as unknown as State & Actions
+
+        /*
+         * v4 — 단원에 안 들어간 성취기준이 배분에서 통째로 빠져 있었다.
+         * 이미 굳은 배분은 스스로 고쳐지지 않으므로, 빠진 게 있는 계획서만 다시 배분한다.
+         * (주차별 손질 화면이 아직 없어 덮어써도 잃을 것이 없다.)
+         */
+        if (version === 3) {
+          const school3 = (state.school ?? SCHOOL_SEED) as SchoolLayer
+          const subjects3 = (state.subjects ?? []) as Subject[]
+          state.plans = ((state.plans ?? []) as SemesterPlan[]).map((p) => {
+            const subject = subjects3.find((x) => x.id === p.subject_id)
+            if (!subject) return p
+            const want = orderedStandardCodes(subject)
+            const have = new Set(Object.values(p.distribution ?? {}).flat())
+            if (want.every((c) => have.has(c))) return p
+            const weeks = weeksOf(school3, p.semester ?? 1)
+            return {
+              ...p,
+              distribution: distributeStandards(subject, weeks, p.exams),
+              ai: undefined,
+            }
+          })
+          return state as unknown as State & Actions
+        }
 
         // 학사일정: calendar(단수) → calendars(배열). 2학기 시드를 보충한다.
         const school = state.school as (SchoolLayer & { calendar?: AcademicCalendar }) | undefined

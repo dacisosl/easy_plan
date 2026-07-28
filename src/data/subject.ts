@@ -192,7 +192,7 @@ export const PLAN_SEED: SemesterPlan = {
   ],
   // 진도 배분은 파생값이지만 교사가 손댄 결과를 남겨야 하므로 학기 레이어에 저장한다.
   // 시드는 앵커 기준으로 미리 배분해 둔다 — 비어 있으면 규칙 10·13이 전부 걸린다.
-  distribution: distributeStandards({ units: UNITS }, WEEKS_2026_1, [
+  distribution: distributeStandards({ units: UNITS, standards: IMPORTED.standards }, WEEKS_2026_1, [
     { week: 8, anchor_code: '[12현윤02-03]' },
     { week: 18, anchor_code: '[12현윤06-01]' },
   ]),

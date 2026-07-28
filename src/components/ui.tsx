@@ -12,7 +12,8 @@ export function Screen({
   children,
   className = '',
 }: {
-  title: ReactNode
+  /** 없으면 제목 줄 자체를 그리지 않는다 — 홈은 상단 바 간판이 그 역할을 한다 */
+  title?: ReactNode
   subtitle?: ReactNode
   right?: ReactNode
   children: ReactNode
@@ -20,13 +21,15 @@ export function Screen({
 }) {
   return (
     <div className={`mx-auto flex w-full max-w-[880px] flex-col gap-8 ${className}`}>
-      <div className="flex items-end justify-between border-b border-line-soft pb-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">{title}</h1>
-          {subtitle && <span className="text-sm text-ink-2">{subtitle}</span>}
+      {(title || right) && (
+        <div className="flex items-end justify-between border-b border-line-soft pb-4">
+          <div className="flex flex-col gap-1">
+            {title && <h1 className="text-xl font-semibold">{title}</h1>}
+            {subtitle && <span className="text-sm text-ink-2">{subtitle}</span>}
+          </div>
+          {right}
         </div>
-        {right}
-      </div>
+      )}
       {children}
     </div>
   )
@@ -67,19 +70,23 @@ export function Fieldset({
     return (
       <section
         id={id}
-        className="rounded-box border border-line-card bg-surface-sub transition-colors hover:border-navy-line-hover"
+        className="flex items-center gap-5 rounded-box border border-line-card bg-surface-sub px-6 py-4"
       >
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex w-full cursor-pointer items-center gap-5 border-0 bg-transparent px-6 py-4 text-left"
-        >
-          {/* 항목 이름은 폭을 고정해 세로로 줄을 맞추고, 내용은 흰 칸에 담아 또렷하게 */}
-          <h2 className="fs-title w-[148px] shrink-0">{title}</h2>
+        {/* 항목 이름은 폭을 고정해 세로로 줄을 맞춘다 */}
+        <h2 className="fs-title w-[148px] shrink-0">{title}</h2>
+        {/*
+         * 미리보기가 글이면 흰 칸에 담아 또렷하게,
+         * 칩처럼 누를 수 있는 것이면 그대로 둔다 — 접힌 채로 바로 고를 수 있어야 한다.
+         */}
+        {typeof preview === 'string' ? (
           <span className="min-w-0 flex-1 truncate rounded-control border border-line-input bg-surface px-3 py-2 text-[14px] text-ink">
             {preview}
           </span>
-          <span className="btn btn-sm btn-accent flex shrink-0 items-center">직접 입력 ▾</span>
+        ) : (
+          <div className="min-w-0 flex-1">{preview}</div>
+        )}
+        <button type="button" className="btn btn-sm btn-accent shrink-0" onClick={onToggle}>
+          직접 입력 ▾
         </button>
       </section>
     )
