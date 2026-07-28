@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { usePlanStore } from '@/store/usePlanStore'
 
 /* ── 화면 틀 — 카드 상자 없이 흰 바탕에 바로 ── */
@@ -241,6 +241,59 @@ export function ChipPicker({
           </button>
           <button className="btn btn-sm" onClick={() => onSave(picked)}>
             저장
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 되돌릴 수 없는 일을 하기 전에 한 번 묻는다.
+ *
+ * 수행평가 카드는 이름·내용·성취기준·루브릭까지 딸려 사라지므로
+ * 잘못 눌렀을 때 되찾을 방법이 없다.
+ */
+export function ConfirmDialog({
+  title,
+  detail,
+  confirmLabel = '삭제',
+  onConfirm,
+  onClose,
+}: {
+  title: ReactNode
+  detail?: ReactNode
+  confirmLabel?: string
+  onConfirm: () => void
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,28,36,0.35)] p-6"
+      onClick={onClose}
+    >
+      <div
+        className="flex w-full max-w-[380px] flex-col gap-4 rounded-card bg-surface p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col gap-1.5">
+          <span className="text-base font-semibold">{title}</span>
+          {detail && <span className="text-[13px] text-ink-2">{detail}</span>}
+        </div>
+        <div className="flex items-center justify-end gap-2">
+          <button className="btn btn-sm btn-ghost" onClick={onClose}>
+            취소
+          </button>
+          <button className="btn btn-sm btn-danger" autoFocus onClick={onConfirm}>
+            {confirmLabel}
           </button>
         </div>
       </div>

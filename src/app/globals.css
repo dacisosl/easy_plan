@@ -52,6 +52,8 @@
   --color-red-line-strong: #e5b8b4;
   --color-red-ink: #8f3a33;
   --color-red-hover: #fbe9e7;
+  /* 지우기 아이콘 평상시 색 — 눈에 띄되 위협적이지 않게 */
+  --color-red-soft: #d68d88;
 
   /* 경고 — 황토색 */
   --color-amber: #a9601a;
@@ -319,14 +321,30 @@
     }
   }
 
-  /* 지우는 버튼 — 빨간 휴지통. 카드 오른쪽 위 모서리에 앉는다 */
+  /*
+   * 지우는 버튼 — 카드 오른쪽 위 모서리에 앉는다.
+   * 평상시엔 연하게 물러나 있다가 손이 닿으면 또렷한 빨강이 된다.
+   */
   .btn-trash {
-    @apply flex h-8 w-8 cursor-pointer items-center justify-center rounded-control border bg-surface text-red;
+    @apply flex h-8 w-8 cursor-pointer items-center justify-center rounded-control border bg-surface;
+    color: var(--color-red-soft);
     border-color: var(--color-red-line);
+    transition:
+      color 120ms ease,
+      background-color 120ms ease;
   }
   .btn-trash:hover {
-    @apply bg-red-hover;
+    @apply bg-red-hover text-red;
     border-color: var(--color-red-line-strong);
+  }
+
+  /*
+   * 서·논술 칸 — 반영 비율 안에 포함되는 값이라 한 단계 물러선 색으로 둔다.
+   * 두 숫자가 똑같이 생기면 각각 100%·30%를 맞춰야 한다는 게 안 보인다.
+   */
+  .control-sub {
+    background: var(--color-navy-bg);
+    @apply border-navy-line text-navy;
   }
 }
 

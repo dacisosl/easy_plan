@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChipPicker, Field, Fieldset, Screen } from '@/components/ui'
+import { ChipPicker, ConfirmDialog, Field, Fieldset, Screen } from '@/components/ui'
 import { SubjectPicker, type SubjectDraft } from '@/components/SubjectPicker'
 import { usePlanStore } from '@/store/usePlanStore'
 import {
@@ -663,13 +663,11 @@ function PlanForm({
       {/* ⑤ 수행평가 — 맨 아래. 위에서 늘린 만큼 카드가 여기 생긴다 */}
       <Fieldset
         id="fs-perf"
-        title={
-          <span className="flex items-center gap-2.5">
-            수행평가
-            <button className="btn btn-sm btn-accent" onClick={addPerf}>
-              + 추가
-            </button>
-          </span>
+        title="수행평가"
+        action={
+          <button className="btn btn-sm btn-accent" onClick={addPerf}>
+            + 추가
+          </button>
         }
         error={firstError('perf')}
       >
@@ -710,7 +708,8 @@ function RatioHead({ className = '' }: { className?: string }) {
     <div className={`${RATIO_COLS} px-1 ${className}`}>
       <span className="label">항목</span>
       <span className="label text-center">반영 비율</span>
-      <span className="label text-center">서·논술</span>
+      {/* 서·논술은 반영 비율 안에 든 값이다 — 이름과 칸 색으로 그 관계를 드러낸다 */}
+      <span className="label text-center text-navy">↳ 서·논술</span>
     </div>
   )
 }
@@ -743,7 +742,7 @@ function RatioRow({
         onChange={(e) => onRatio(Number(e.target.value) || 0)}
       />
       <input
-        className="control text-center"
+        className="control control-sub text-center"
         type="number"
         value={essay}
         onChange={(e) => onEssay(Number(e.target.value) || 0)}
@@ -810,6 +809,7 @@ function PerfCard({
   const [name, setName] = useState(perf.name)
   const [intent, setIntent] = useState(perf.intent ?? perf.activity ?? '')
   const [picking, setPicking] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   useDebounced(name, (v) =>
     upsertPerf({ id: perf.id, name: v, intent, week: perf.week, ratio: perf.ratio }),
@@ -827,7 +827,7 @@ function PerfCard({
       {/* 지우기는 오른쪽 위 모서리에 — 입력 칸 사이에 두면 잘못 누른다 */}
       <button
         className="btn-trash absolute top-2.5 right-2.5"
-        onClick={() => removePerf(perf.id)}
+        onClick={() => setConfirming(true)}
         title="이 수행평가 지우기"
         aria-label="이 수행평가 지우기"
       >
@@ -927,6 +927,15 @@ function PerfCard({
           </span>
         ))}
       </div>
+
+      {confirming && (
+        <ConfirmDialog
+          title={`‘${name || '이름 없는 수행평가'}’를 지울까요?`}
+          detail="내용과 성취기준, 루브릭까지 함께 사라집니다. 되돌릴 수 없습니다."
+          onConfirm={() => removePerf(perf.id)}
+          onClose={() => setConfirming(false)}
+        />
+      )}
 
       {picking && (
         <ChipPicker
