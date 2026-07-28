@@ -212,10 +212,14 @@ export interface Subject {
 
 export type SplitScoreType = '추정' | '고정'
 
-/** 3-2. 정기시험 문항 구분별 배점 */
+/**
+ * 3-2. 정기시험 문항 구분별 배점.
+ *
+ * Ⅳ 표에서 회차 하나가 차지하는 열 수가 곧 이 배열의 길이다.
+ * (실물: 국어는 선택형 하나, 과학은 선택형·단답형, 수학은 셋)
+ */
 export interface ExamPart {
-  /** 선택형 / 서술형 */
-  kind: '선택형' | '서술형'
+  kind: '선택형' | '단답형' | '서술형'
   /** 문항 수 */
   count: number
   /** 배점 합 */

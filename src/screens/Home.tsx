@@ -14,7 +14,6 @@ import { SubjectPicker, type SubjectDraft } from '@/components/SubjectPicker'
 import { usePlanStore } from '@/store/usePlanStore'
 import {
   essayTotal,
-  examEssayPct,
   examRatioOf,
   monthWeekLabel,
   orderedStandardCodes,
@@ -24,7 +23,7 @@ import {
 } from '@/lib/derive'
 import { methodsFromIntent, splitPerfRatios } from '@/lib/autofill'
 import { validate } from '@/lib/validate'
-import type { FocusTarget, SemesterPlan, Subject } from '@/types'
+import type { ExamPart, FocusTarget, SemesterPlan, Subject } from '@/types'
 
 /** 입력 즉시 반영하되 타이핑 중에는 재계산을 미룬다 */
 function useDebounced<T>(value: T, apply: (v: T) => void, ms = 300) {
@@ -189,6 +188,37 @@ function PlanForm({
    */
   const [openSec, setOpenSec] = useState({ anchor: false })
   const toggleSec = (k: 'anchor') => setOpenSec((s) => ({ ...s, [k]: !s[k] }))
+
+  /* 시험지 100점을 어떻게 나눌지 — 선택형은 나머지라 따로 적지 않는다 */
+  const pointsOf = (e: { parts: ExamPart[] }, kind: ExamPart['kind']) =>
+    e.parts.filter((p) => p.kind === kind).reduce((s, p) => s + p.points, 0)
+
+  /**
+   * 단답형·서술형 배점을 정하면 선택형이 나머지를 갖는다.
+   *
+   * Ⅳ 표에서 이 회차가 차지하는 열 수가 곧 유형 개수다. 배점 0인 유형은 빼서
+   * 열이 헛되이 늘지 않게 한다 — 실물도 국어는 선택형 하나, 수학은 셋이었다.
+   */
+  const setExamPoints = (examNo: number, kind: '단답형' | '서술형', points: number) => {
+    const e = plan.exams.find((x) => x.no === examNo)
+    if (!e) return
+    const other = kind === '단답형' ? pointsOf(e, '서술형') : pointsOf(e, '단답형')
+    const v = Math.max(0, Math.min(100 - other, Math.round(points) || 0))
+    const want: Record<ExamPart['kind'], number> = {
+      선택형: 100 - v - other,
+      단답형: kind === '단답형' ? v : other,
+      서술형: kind === '서술형' ? v : other,
+    }
+    const counts: Record<string, number> = { 선택형: 20, 단답형: 5, 서술형: 5 }
+    const parts = (['선택형', '단답형', '서술형'] as const)
+      .filter((k) => want[k] > 0)
+      .map((k) => ({
+        kind: k,
+        count: e.parts.find((p) => p.kind === k)?.count ?? counts[k],
+        points: want[k],
+      }))
+    patchPlan({ exams: plan.exams.map((x) => (x.no === examNo ? { ...x, parts } : x)) })
+  }
 
   /* 오류의 '고치기' — 구획을 펼치고 스크롤한 뒤 첫 입력에 포커스 */
   useEffect(() => {
@@ -360,39 +390,7 @@ function PlanForm({
 
   /* ── 서술·논술형 ──────────────────────────── */
 
-  /**
-   * 회차의 서술형을 '전체 성적에서 차지하는 %'로 받는다.
-   *
-   * 표 안에서 수행평가 쪽 서·논술은 전체 기준 %인데 정기시험만 시험지 안 기준 %면
-   * 같은 열의 숫자끼리 뜻이 달라진다. 합계가 30%를 넘는지 눈으로 못 세게 되므로
-   * 입력은 전체 기준으로 받고, 시험지 안 배점으로는 여기서 되돌린다.
-   */
-  const examEssayAbs = (examNo: number) =>
-    Math.round((examEssayPct(plan, examNo) / 100) * examRatioOf(plan, examNo))
 
-  const setExamEssayAbs = (examNo: number, abs: number) => {
-    const ratio = examRatioOf(plan, examNo)
-    if (ratio <= 0) return
-    const capped = Math.max(0, Math.min(ratio, Math.round(abs) || 0))
-    setEssayPct(examNo, Math.round((capped / ratio) * 100))
-  }
-
-  const setEssayPct = (examNo: number, pct: number) => {
-    const v = Math.max(0, Math.min(100, pct))
-    patchPlan({
-      exams: plan.exams.map((e) =>
-        e.no === examNo
-          ? {
-              ...e,
-              parts: [
-                { kind: '선택형' as const, count: 20, points: 100 - v },
-                { kind: '서술형' as const, count: 5, points: v },
-              ],
-            }
-          : e,
-      ),
-    })
-  }
 
   /** 수행평가 하나의 서술·논술 비율을 직접 정한다 */
   const setPerfEssay = (perfId: string, pct: number) => {
@@ -595,6 +593,7 @@ function PlanForm({
           </div>
         )}
 
+
         {(firstError('exam') || firstError('anchor')) && (
           <span className="pl-[168px] text-[13px] text-red">
             {firstError('exam') ?? firstError('anchor')}
@@ -634,9 +633,11 @@ function PlanForm({
                 key={`x${e.no}`}
                 label={`${e.no}회 정기시험`}
                 ratio={examRatioOf(plan, e.no)}
-                essay={examEssayAbs(e.no)}
+                short={pointsOf(e, '단답형')}
+                essay={pointsOf(e, '서술형')}
                 onRatio={(v) => setExamRatio(e.no, v)}
-                onEssay={(v) => setExamEssayAbs(e.no, v)}
+                onShort={(v) => setExamPoints(e.no, '단답형', v)}
+                onEssay={(v) => setExamPoints(e.no, '서술형', v)}
               />
             ))}
 
@@ -670,6 +671,13 @@ function PlanForm({
               지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
             </span>
           </div>
+          {/* 두 칸의 기준이 달라서 합계와 숫자가 어긋나 보인다 — 짚어 준다 */}
+          {plan.exam_count > 0 && (
+            <span className="text-[13px] text-ink-3">
+              정기시험의 단답·서·논술은 <b className="font-medium text-ink-2">시험지 100점</b> 기준입니다
+              (선택형은 나머지). 수행평가는 반영 비율 기준이고, 위 합계는 둘을 환산한 값입니다.
+            </span>
+          )}
         </div>
       </Fieldset>
 
@@ -714,15 +722,16 @@ function PlanForm({
 
 /* ── 비율 조정 한 줄 ──────────────────────────── */
 
-const RATIO_COLS = 'grid grid-cols-[1fr_80px_80px] items-center gap-2'
+const RATIO_COLS = 'grid grid-cols-[1fr_64px_58px_58px] items-center gap-1.5'
 
 function RatioHead({ className = '' }: { className?: string }) {
   return (
     <div className={`${RATIO_COLS} px-1 ${className}`}>
       <span className="label">항목</span>
       <span className="label text-center">반영 비율</span>
-      {/* 서논술은 반영 비율 안에 든 값이다 — 글씨 색으로 다른 종류임을 알린다 */}
-      <span className="label text-center font-semibold text-navy">서논술 비율</span>
+      {/* 정기시험은 시험지 100점을 어떻게 나눌지다 — 선택형은 나머지라 칸이 없다 */}
+      <span className="label text-center">단답</span>
+      <span className="label text-center font-semibold text-navy">서·논술</span>
     </div>
   )
 }
@@ -731,16 +740,21 @@ function RatioRow({
   label,
   placeholder,
   ratio,
+  short,
   essay,
   onRatio,
+  onShort,
   onEssay,
 }: {
   label: string
   /** 이름을 아직 안 쓴 수행평가에 붙일 임시 이름 */
   placeholder?: string
   ratio: number
+  /** 단답형 배점 — 정기시험에만 있다 */
+  short?: number
   essay: number
   onRatio: (v: number) => void
+  onShort?: (v: number) => void
   onEssay: (v: number) => void
 }) {
   return (
@@ -754,6 +768,17 @@ function RatioRow({
         value={ratio}
         onChange={(e) => onRatio(Number(e.target.value) || 0)}
       />
+      {onShort ? (
+        <input
+          className="control text-center"
+          type="number"
+          value={short ?? 0}
+          onChange={(e) => onShort(Number(e.target.value) || 0)}
+        />
+      ) : (
+        // 수행평가에는 단답형이 없다 — 칸을 비워 세로 줄만 맞춘다
+        <span aria-hidden />
+      )}
       <input
         className="control control-sub text-center"
         type="number"
