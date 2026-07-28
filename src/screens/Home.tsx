@@ -86,12 +86,13 @@ export function Home() {
   if (!plan || !subject) {
     return (
       <Screen title="평가계획 만들기">
+        {/* 첫 화면은 할 일이 하나뿐이다 — 라벨을 검색창에 바로 붙인다 */}
         <section
           id="fs-basic"
-          className="flex items-center gap-5 rounded-box border border-line-card bg-surface-sub px-6 py-4"
+          className="flex items-center gap-4 rounded-box border border-line-card bg-surface-sub px-6 py-4"
         >
-          <h2 className="w-[132px] shrink-0 text-[15px] font-semibold">과목</h2>
-          <div className="min-w-0 flex-1">
+          <h2 className="shrink-0 text-[15px] font-semibold">과목</h2>
+          <div className="min-w-0 max-w-[460px] flex-1">
             <SubjectPicker value="" onPick={pickSubject} autoFocus />
           </div>
           {loading && <span className="shrink-0 text-[13px] text-ink-3">불러오는 중…</span>}
@@ -487,7 +488,7 @@ function PlanForm({
         id="fs-essay"
         title="서술·논술형 비율"
         action={
-          <button className="btn btn-sm btn-ghost" onClick={addPerf}>
+          <button className="btn btn-sm btn-accent" onClick={addPerf}>
             + 수행평가
           </button>
         }
@@ -553,7 +554,7 @@ function PlanForm({
         title={
           <span className="flex items-center gap-2.5">
             수행평가
-            <button className="btn btn-sm btn-ghost" onClick={addPerf}>
+            <button className="btn btn-sm btn-accent" onClick={addPerf}>
               + 추가
             </button>
           </span>
@@ -739,8 +740,22 @@ function PerfCard({
 
       {/* 성취기준 — 안 고르면 진도에 맞춰 자동으로 채운다 */}
       <div className="flex flex-wrap items-center gap-2">
-        <button className="btn btn-sm btn-ghost" onClick={() => setPicking(true)}>
-          성취기준 {perf.standards_manual ? '고침' : '자동'} · {perf.standard_codes.length}
+        <button className="btn btn-sm btn-accent" onClick={() => setPicking(true)}>
+          성취기준 수정 · {perf.standard_codes.length}
+          <svg
+            className="ml-1.5 inline-block align-[-2px]"
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M11.5 2.5a1.6 1.6 0 0 1 2.3 2.3L5.6 13 2.5 13.5 3 10.4z" />
+          </svg>
         </button>
         {perf.standard_codes.map((c) => (
           <span key={c} className="chip chip-tag" title={stdText(c)}>
@@ -790,38 +805,52 @@ function RecentPlans({
   onOpen: (id: string) => void
   onDelete: (id: string) => void
 }) {
+  const [open, setOpen] = useState(false)
   if (plans.length === 0) return null
+
   const ago = (iso: string) => {
     const d = new Date(iso)
     const diff = Math.floor((Date.now() - d.getTime()) / 86400000)
     return diff <= 0 ? '오늘' : diff === 1 ? '어제' : `${d.getMonth() + 1}월 ${d.getDate()}일`
   }
+
+  // 새로 만드는 게 기본이다 — 이어 쓸 계획서는 접어 두고 개수만 알린다
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-[15px] font-semibold">이어서 쓰기</h2>
-      <div className="list">
-        {plans.map((p) => (
-          <div
-            key={p.id}
-            className="flex items-center justify-between border-b border-line-soft px-6 py-3.5 last:border-b-0"
-          >
-            <button
-              className="flex-1 cursor-pointer border-0 bg-transparent text-left"
-              onClick={() => onOpen(p.id)}
+      <button
+        className="flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="text-[15px] font-semibold">이어서 쓰기</span>
+        <span className="text-[13px] text-ink-3">{plans.length}개</span>
+        <span className="text-[13px] text-navy">{open ? '접기 ▴' : '펼치기 ▾'}</span>
+      </button>
+
+      {open && (
+        <div className="list">
+          {plans.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between border-b border-line-soft px-6 py-3.5 last:border-b-0"
             >
-              <span className="text-[15px] font-medium">
-                {subjects.find((s) => s.id === p.subject_id)?.name ?? '과목 미정'}
-              </span>
-              <span className="ml-2 text-[13px] text-ink-3">
-                {p.grade}학년 · {p.semester}학기 · {ago(p.updated_at)}
-              </span>
-            </button>
-            <a className="text-[13px] text-ink-3" onClick={() => onDelete(p.id)}>
-              삭제
-            </a>
-          </div>
-        ))}
-      </div>
+              <button
+                className="flex-1 cursor-pointer border-0 bg-transparent text-left"
+                onClick={() => onOpen(p.id)}
+              >
+                <span className="text-[15px] font-medium">
+                  {subjects.find((s) => s.id === p.subject_id)?.name ?? '과목 미정'}
+                </span>
+                <span className="ml-2 text-[13px] text-ink-3">
+                  {p.grade}학년 · {p.semester}학기 · {ago(p.updated_at)}
+                </span>
+              </button>
+              <a className="text-[13px] text-ink-3" onClick={() => onDelete(p.id)}>
+                삭제
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

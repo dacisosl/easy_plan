@@ -144,6 +144,13 @@
   .btn-ghost:hover:not(:disabled) {
     @apply bg-surface-sub;
   }
+  /* 무언가를 늘리는 버튼 — 옅은 파랑으로 '누를 곳'임을 드러낸다 */
+  .btn-accent {
+    @apply border border-navy-line bg-navy-bg font-medium text-navy;
+  }
+  .btn-accent:hover:not(:disabled) {
+    @apply border-navy-line-hover bg-navy-bg brightness-[0.98];
+  }
   .btn-soft {
     @apply border border-navy-line bg-navy-bg text-navy;
   }

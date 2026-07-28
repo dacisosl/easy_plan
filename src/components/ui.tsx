@@ -184,11 +184,11 @@ export function ChipPicker({
       onClick={onClose}
     >
       <div
-        className="flex h-full max-h-[92vh] w-full max-w-[1280px] flex-col gap-4 rounded-card bg-surface p-7"
+        className="flex max-h-[76vh] w-full max-w-[880px] flex-col gap-3 rounded-card bg-surface p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-baseline justify-between gap-4">
-          <h2 className="text-base font-semibold">{title}</h2>
+          <h2 className="text-[15px] font-semibold">{title}</h2>
           <span className="text-[13px] text-ink-3">
             {picked.length}
             {max != null ? ` / ${max}` : ''}
@@ -196,7 +196,7 @@ export function ChipPicker({
         </div>
 
         {/* 성취기준은 문장이 길다 — 2열로 펼쳐 한 화면에 담는다 */}
-        <div className="grid flex-1 grid-cols-1 content-start gap-2 overflow-y-auto pr-1 lg:grid-cols-2">
+        <div className="grid grid-cols-1 content-start gap-1.5 overflow-y-auto pr-1 lg:grid-cols-2">
           {options.map((o) => {
             const on = picked.includes(o.value)
             const blocked = !on && full
@@ -205,7 +205,7 @@ export function ChipPicker({
                 key={o.value}
                 onClick={() => toggle(o.value)}
                 disabled={blocked}
-                className={`flex w-full items-start gap-3 rounded-control border px-4 py-3 text-left transition-colors ${
+                className={`flex w-full items-start gap-2.5 rounded-control border px-3 py-2 text-left transition-colors ${
                   on
                     ? 'border-navy bg-navy text-white'
                     : blocked
@@ -213,11 +213,13 @@ export function ChipPicker({
                       : 'border-line-input bg-surface hover:border-navy-line-hover'
                 }`}
               >
-                <span className={`shrink-0 font-mono text-[13px] ${on ? '' : 'text-navy'}`}>
+                <span className={`shrink-0 font-mono text-[12px] ${on ? '' : 'text-navy'}`}>
                   {o.label}
                 </span>
                 {o.sub && (
-                  <span className={`text-[13px] leading-snug ${on ? 'text-white/85' : 'text-ink-2'}`}>
+                  <span
+                    className={`line-clamp-2 text-[12px] leading-snug ${on ? 'text-white/85' : 'text-ink-2'}`}
+                  >
                     {o.sub}
                   </span>
                 )}
@@ -226,7 +228,7 @@ export function ChipPicker({
           })}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-line-soft pt-4">
+        <div className="flex items-center justify-end gap-2 border-t border-line-soft pt-3">
           <button className="btn btn-sm btn-ghost" onClick={onClose}>
             취소
           </button>
