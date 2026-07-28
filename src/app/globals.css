@@ -45,6 +45,14 @@
   --color-navy-line: #cfe0eb;
   --color-navy-line-hover: #b3cddd;
 
+  /*
+   * 진한 파랑 — 서논술 비율처럼 '다른 종류의 숫자'를 표시할 때만 쓴다.
+   * 주색(navy #17547a)은 청록기가 있어 파랑으로 읽히지 않는다.
+   */
+  --color-blue: #1350bd;
+  --color-blue-bg: #e6eefc;
+  --color-blue-line: #b9cef0;
+
   /* 오류 — 붉은색 */
   --color-red: #c62828;
   --color-red-bg: #fdf3f2;
@@ -344,7 +352,13 @@
    * 글씨 색으로 다른 종류임을 알린다.
    */
   .control-sub {
-    @apply font-medium text-navy;
+    @apply font-semibold text-blue;
+    background: var(--color-blue-bg);
+    border-color: var(--color-blue-line);
+  }
+  .control-sub:hover:not(:disabled),
+  .control-sub:focus {
+    border-color: var(--color-blue);
   }
 }
 

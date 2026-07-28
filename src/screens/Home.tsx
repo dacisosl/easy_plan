@@ -648,10 +648,10 @@ function PlanForm({
               className={
                 essay < school.rules.essay_min
                   ? 'font-semibold text-red'
-                  : 'font-semibold text-navy'
+                  : 'font-semibold text-blue'
               }
             >
-              서·논술 {essay.toFixed(0)}% / {school.rules.essay_min}%
+              서논술 {essay.toFixed(0)}% / {school.rules.essay_min}%
             </span>
             <span className="text-ink-2">
               지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
@@ -709,7 +709,7 @@ function RatioHead({ className = '' }: { className?: string }) {
       <span className="label">항목</span>
       <span className="label text-center">반영 비율</span>
       {/* 서논술은 반영 비율 안에 든 값이다 — 글씨 색으로 다른 종류임을 알린다 */}
-      <span className="label text-center text-navy">서논술 비율</span>
+      <span className="label text-center font-semibold text-blue">서논술 비율</span>
     </div>
   )
 }
