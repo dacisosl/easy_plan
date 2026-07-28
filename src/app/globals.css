@@ -23,6 +23,8 @@
   --color-line-soft: #eef0f2;
   --color-line-input: #e0e3e7;
   --color-line-chip: #e0e3e7;
+  /* 구획을 감싸는 테두리 — 흰 바탕에서 카드 경계가 분명히 보이게 */
+  --color-line-card: #cdd4dc;
 
   /* 글자 */
   --color-ink: #1a1c1e;
