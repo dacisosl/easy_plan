@@ -45,7 +45,6 @@ export function Home() {
     currentPlanId,
     openPlan,
     newPlan,
-    deletePlan,
     patchPlan,
     upsertSubject,
     upsertManualSubject,
@@ -58,6 +57,19 @@ export function Home() {
 
   const [loading, setLoading] = useState(false)
   const [pickError, setPickError] = useState<string | null>(null)
+
+  /*
+   * 새로고침하거나 창을 닫았다 와도 쓰던 계획서로 돌아온다.
+   * 목록을 보여 주는 대신 가장 최근 것을 그냥 이어서 연다 —
+   * 처음부터 다시 시작하려면 헤더의 '새 계획서'를 누르면 된다.
+   */
+  const resumed = useRef(false)
+  useEffect(() => {
+    if (resumed.current || currentPlanId || plans.length === 0) return
+    resumed.current = true
+    const latest = [...plans].sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
+    if (latest) openPlan(latest.id)
+  }, [currentPlanId, plans, openPlan])
 
   const pickSubject = async (name: string, listed: boolean) => {
     setPickError(null)
@@ -86,19 +98,18 @@ export function Home() {
   if (!plan || !subject) {
     return (
       <Screen title="평가계획 만들기">
-        {/* 첫 화면은 할 일이 하나뿐이다 — 라벨을 검색창에 바로 붙인다 */}
+        {/* 첫 화면은 할 일이 하나뿐이다 — 상자도 검색창 크기에 맞춘다 */}
         <section
           id="fs-basic"
-          className="flex items-center gap-4 rounded-box border border-line-card bg-surface-sub px-6 py-4"
+          className="flex w-fit items-center gap-4 rounded-box border border-line-card bg-surface-sub px-5 py-4"
         >
           <h2 className="shrink-0 text-[15px] font-semibold">과목</h2>
-          <div className="min-w-0 max-w-[460px] flex-1">
+          <div className="w-[420px]">
             <SubjectPicker value="" onPick={pickSubject} autoFocus />
           </div>
           {loading && <span className="shrink-0 text-[13px] text-ink-3">불러오는 중…</span>}
         </section>
         {pickError && <span className="text-[13px] text-red">{pickError}</span>}
-        <RecentPlans plans={plans} subjects={subjects} onOpen={openPlan} onDelete={deletePlan} />
       </Screen>
     )
   }
@@ -792,65 +803,3 @@ function PerfCard({
   )
 }
 
-/* ── 최근 계획서 ──────────────────────────────── */
-
-function RecentPlans({
-  plans,
-  subjects,
-  onOpen,
-  onDelete,
-}: {
-  plans: { id: string; subject_id: string; grade: number; semester: 1 | 2; updated_at: string }[]
-  subjects: { id: string; name: string }[]
-  onOpen: (id: string) => void
-  onDelete: (id: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  if (plans.length === 0) return null
-
-  const ago = (iso: string) => {
-    const d = new Date(iso)
-    const diff = Math.floor((Date.now() - d.getTime()) / 86400000)
-    return diff <= 0 ? '오늘' : diff === 1 ? '어제' : `${d.getMonth() + 1}월 ${d.getDate()}일`
-  }
-
-  // 새로 만드는 게 기본이다 — 이어 쓸 계획서는 접어 두고 개수만 알린다
-  return (
-    <div className="flex flex-col gap-3">
-      <button
-        className="flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="text-[15px] font-semibold">이어서 쓰기</span>
-        <span className="text-[13px] text-ink-3">{plans.length}개</span>
-        <span className="text-[13px] text-navy">{open ? '접기 ▴' : '펼치기 ▾'}</span>
-      </button>
-
-      {open && (
-        <div className="list">
-          {plans.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center justify-between border-b border-line-soft px-6 py-3.5 last:border-b-0"
-            >
-              <button
-                className="flex-1 cursor-pointer border-0 bg-transparent text-left"
-                onClick={() => onOpen(p.id)}
-              >
-                <span className="text-[15px] font-medium">
-                  {subjects.find((s) => s.id === p.subject_id)?.name ?? '과목 미정'}
-                </span>
-                <span className="ml-2 text-[13px] text-ink-3">
-                  {p.grade}학년 · {p.semester}학기 · {ago(p.updated_at)}
-                </span>
-              </button>
-              <a className="text-[13px] text-ink-3" onClick={() => onDelete(p.id)}>
-                삭제
-              </a>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}

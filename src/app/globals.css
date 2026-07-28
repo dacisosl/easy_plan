@@ -38,6 +38,10 @@
   --color-navy-deep: #123f5c;
   --color-navy-mid: #5b87a6;
   --color-navy-bg: #f0f6fa;
+  /* 누르는 버튼 바탕 — 흰 화면에서 확실히 파랗게 보이는 정도 */
+  --color-accent-soft: #d7e8f4;
+  --color-accent-soft-line: #b3d2e7;
+  --color-accent-soft-hover: #c6dfef;
   --color-navy-line: #cfe0eb;
   --color-navy-line-hover: #b3cddd;
 
@@ -144,12 +148,15 @@
   .btn-ghost:hover:not(:disabled) {
     @apply bg-surface-sub;
   }
-  /* 무언가를 늘리는 버튼 — 옅은 파랑으로 '누를 곳'임을 드러낸다 */
+  /* 누르는 버튼 — 연한 파랑 바탕으로 '여기를 누른다'를 드러낸다 */
   .btn-accent {
-    @apply border border-navy-line bg-navy-bg font-medium text-navy;
+    @apply border font-medium text-navy;
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent-soft-line);
   }
   .btn-accent:hover:not(:disabled) {
-    @apply border-navy-line-hover bg-navy-bg brightness-[0.98];
+    background: var(--color-accent-soft-hover);
+    border-color: var(--color-navy-mid);
   }
   .btn-soft {
     @apply border border-navy-line bg-navy-bg text-navy;
@@ -227,6 +234,18 @@
   }
   .sec-title {
     @apply text-[15px] font-semibold;
+  }
+
+  /*
+   * 구획 제목 — 세부 입력과 확실히 구분되게.
+   * 왼쪽 청남색 막대 + 조금 큰 글씨로 '여기서부터 새 항목'임을 알린다.
+   */
+  .fs-title {
+    @apply flex items-center gap-2.5 text-[16px] font-semibold tracking-[-0.01em] text-ink;
+  }
+  .fs-title::before {
+    content: '';
+    @apply h-[15px] w-[3px] shrink-0 rounded-full bg-navy;
   }
 
   /* 입력 칸 묶음 — 테두리와 연한 바탕으로 '쓰는 자리'를 한 덩어리로 묶는다 */

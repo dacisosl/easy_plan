@@ -10,14 +10,13 @@
 import { usePlanStore, type ScreenId } from '@/store/usePlanStore'
 
 const WHERE: Partial<Record<ScreenId, string>> = {
-  home: '한 화면에 다 적으면 됩니다',
   generating: '계획서를 만드는 중',
   download: '내려받기',
   admin: '관리자 — 학사일정 · 배포표 · 학교 규칙',
 }
 
 export function AppHeader() {
-  const { screen, go } = usePlanStore()
+  const { screen, go, currentPlanId, startNew } = usePlanStore()
 
   return (
     <header className="sticky top-0 z-10 border-b border-line-soft bg-white">
@@ -38,7 +37,12 @@ export function AppHeader() {
         <div className="flex items-center gap-2">
           {screen !== 'home' && (
             <button className="btn btn-sm btn-ghost" onClick={() => go('home')}>
-              홈
+              작성으로
+            </button>
+          )}
+          {currentPlanId && (
+            <button className="btn btn-sm btn-accent" onClick={startNew}>
+              새 계획서
             </button>
           )}
           <button

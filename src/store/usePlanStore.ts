@@ -39,6 +39,8 @@ interface Actions {
   go: (screen: ScreenId) => void
   openPlan: (id: string, screen?: ScreenId) => void
   newPlan: (subjectId?: string) => string
+  /** 처음부터 다시 — 과목 고르기 화면으로 돌아간다 (쓰던 계획서는 남는다) */
+  startNew: () => void
   deletePlan: (id: string) => void
   /** 오류의 '고치기' — 홈으로 보내고 해당 구획에 포커스를 준다 */
   focusOn: (target: FocusTarget) => void
@@ -139,6 +141,8 @@ export const usePlanStore = create<State & Actions>()(
         set((s) => ({ plans: [plan, ...s.plans], currentPlanId: id, screen: 'home' }))
         return id
       },
+
+      startNew: () => set({ currentPlanId: null, screen: 'home', focusTarget: null }),
 
       deletePlan: (id) =>
         set((s) => ({

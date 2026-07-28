@@ -75,11 +75,11 @@ export function Fieldset({
           className="flex w-full cursor-pointer items-center gap-5 border-0 bg-transparent px-6 py-4 text-left"
         >
           {/* 항목 이름은 폭을 고정해 세로로 줄을 맞추고, 내용은 흰 칸에 담아 또렷하게 */}
-          <h2 className="w-[132px] shrink-0 text-[15px] font-semibold">{title}</h2>
+          <h2 className="fs-title w-[148px] shrink-0">{title}</h2>
           <span className="min-w-0 flex-1 truncate rounded-control border border-line-input bg-surface px-3 py-2 text-[14px] text-ink">
             {preview}
           </span>
-          <span className="shrink-0 text-[13px] font-medium text-navy">직접 입력 ▾</span>
+          <span className="btn btn-sm btn-accent flex shrink-0 items-center">직접 입력 ▾</span>
         </button>
       </section>
     )
@@ -92,9 +92,9 @@ export function Fieldset({
         error ? 'border-red-line bg-red-bg/40' : 'border-line-card bg-surface-sub'
       }`}
     >
-      <div className="flex items-baseline justify-between gap-4">
-        <div className="flex items-baseline gap-3">
-          <h2 className="text-[15px] font-semibold">{title}</h2>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <h2 className="fs-title">{title}</h2>
           {hint && <span className="text-[13px] text-ink-3">{hint}</span>}
         </div>
         <div className="flex items-center gap-3">
