@@ -231,6 +231,22 @@ function PlanForm({
   }
 
   /**
+   * 시험을 한 번만 볼 때 그것이 1회고사인지 2회고사인지.
+   *
+   * 회차에 따라 시험 주가 학기 중간이냐 기말이냐로 갈리고, 그러면 진도 배분도
+   * 통째로 달라진다. 학교마다 다르므로 고르게 둔다.
+   */
+  const setSingleExamNo = (n: 1 | 2) => {
+    const examWeeks = weeks.filter((w) => w.is_exam).map((w) => w.no)
+    const e = plan.exams[0]
+    if (!e) return
+    patchPlan({
+      exams: [{ ...e, no: n, week: examWeeks[n - 1] ?? examWeeks[examWeeks.length - 1] ?? e.week }],
+    })
+    setTimeout(redistribute, 0)
+  }
+
+  /**
    * 회차 하나의 반영 비율.
    *
    * 전체 정기시험 비율은 회차 값들의 합이고, 수행평가 몫은 그 나머지다.
@@ -483,6 +499,22 @@ function PlanForm({
             >
               수행 100%
             </button>
+
+            {/* 한 번만 볼 때는 그게 몇 회 고사인지에 따라 시험 주가 달라진다 */}
+            {plan.exam_count === 1 && (
+              <>
+                <span className="mx-1 h-5 w-px shrink-0 bg-line-input" />
+                {([1, 2] as const).map((n) => (
+                  <button
+                    key={n}
+                    className={`chip ${plan.exams[0]?.no === n ? 'chip-on' : ''}`}
+                    onClick={() => setSingleExamNo(n)}
+                  >
+                    {n}회 정기시험
+                  </button>
+                ))}
+              </>
+            )}
           </div>
         </div>
 
@@ -793,7 +825,7 @@ function PerfCard({
       {/* 라벨 높이를 고정해 칸끼리 어긋나지 않게 한다. 비율은 '비율 조정'에서 정한다 */}
       <div className="grid grid-cols-[1.6fr_1fr_auto] items-start gap-3 pr-11">
         <label className="flex flex-col gap-2">
-          <span className="label flex h-5 items-center gap-2">
+          <span className="label label-over flex h-5 items-center gap-2">
             명칭
             <span className={`text-[12px] ${over ? 'text-red' : 'text-ink-4'}`}>
               {nameLen}/{school.rules.perf_name_maxlen}
@@ -807,7 +839,7 @@ function PerfCard({
           />
         </label>
         <label className="flex flex-col gap-2">
-          <span className="label flex h-5 items-center">실시 시기</span>
+          <span className="label label-over flex h-5 items-center">실시 시기</span>
           <select
             className="control"
             value={perf.week}
@@ -852,7 +884,7 @@ function PerfCard({
       </div>
 
       <label className="flex flex-col gap-2">
-        <span className="label flex h-5 items-center gap-2">
+        <span className="label label-over flex h-5 items-center gap-2">
           내용
           <span className="text-[12px] text-ink-4">{methodsFromIntent(intent).method}</span>
         </span>

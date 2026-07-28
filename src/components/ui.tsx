@@ -149,9 +149,9 @@ export function Field({
 }) {
   return (
     <label className={`flex flex-col gap-2 ${className}`}>
-      <span className="label">{label}</span>
+      <span className="label label-over">{label}</span>
       {children}
-      {hint && <span className="hint">{hint}</span>}
+      {hint && <span className="hint label-over">{hint}</span>}
     </label>
   )
 }

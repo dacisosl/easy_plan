@@ -227,7 +227,16 @@
     @apply font-mono text-xs tracking-[0.08em] text-ink-3;
   }
   .label {
-    @apply text-[13px] text-ink-2;
+    @apply text-[13px] text-ink;
+  }
+  /*
+   * 입력칸 위에 얹는 이름표.
+   *
+   * .control은 안쪽 여백 12px + 테두리 1px이라, 라벨을 그냥 두면
+   * 칸 안의 글자보다 13px 왼쪽에서 시작해 미묘하게 어긋나 보인다.
+   */
+  .label-over {
+    @apply pl-[13px];
   }
   .hint {
     @apply text-[13px] text-ink-3;
