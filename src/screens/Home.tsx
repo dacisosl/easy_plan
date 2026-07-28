@@ -43,8 +43,6 @@ export function Home() {
     plans,
     subjects,
     currentPlanId,
-    focusTarget,
-    clearFocus,
     openPlan,
     newPlan,
     deletePlan,
@@ -60,15 +58,6 @@ export function Home() {
 
   const [loading, setLoading] = useState(false)
   const [pickError, setPickError] = useState<string | null>(null)
-
-  /* 오류의 '고치기' — 해당 구획으로 스크롤하고 첫 입력에 포커스 */
-  useEffect(() => {
-    if (!focusTarget) return
-    const el = document.getElementById(`fs-${focusTarget}`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el?.querySelector<HTMLElement>('input, select, textarea')?.focus()
-    clearFocus()
-  }, [focusTarget, clearFocus])
 
   const pickSubject = async (name: string, listed: boolean) => {
     setPickError(null)
@@ -128,7 +117,7 @@ function PlanForm({
   onPickSubject: (name: string, listed: boolean) => void
   onDone: () => void
 }) {
-  const { school, patchPlan, upsertPerf, removePerf, redistribute } = usePlanStore()
+  const { school, patchPlan, upsertPerf, redistribute, focusTarget, clearFocus } = usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))!
   const subject = usePlanStore((s) => {
     const p = s.plans.find((x) => x.id === s.currentPlanId)!
@@ -141,8 +130,36 @@ function PlanForm({
   const stdText = (c: string) => subject.standards.find((s) => s.code === c)?.text ?? ''
 
   const result = validate(plan, subject, school)
-  const errorsFor = (t: FocusTarget) => result.errors.filter((e) => e.target === t)
-  const firstError = (t: FocusTarget) => errorsFor(t)[0]?.title
+  /*
+   * 수행평가 이름을 쓰기 전에는 오류를 조용히 둔다 — 작성 중인 계획서는
+   * 원래 규칙을 못 지킨다. '계획서 만들기'는 어차피 ready 조건이 막고 있다.
+   */
+  const showErrors = plan.performances.some((p) => p.name.trim().length > 0)
+  const firstError = (t: FocusTarget) =>
+    showErrors ? result.errors.find((e) => e.target === t)?.title : undefined
+
+  /*
+   * 평가 구획은 자동값이 이미 들어 있으므로 접어 두고 요약만 보여 준다.
+   * '직접 입력'을 누르거나 오류가 걸리면 펼쳐진다.
+   */
+  const [openSec, setOpenSec] = useState({ exam: false, anchor: false, essay: false })
+  const toggleSec = (k: 'exam' | 'anchor' | 'essay') =>
+    setOpenSec((s) => ({ ...s, [k]: !s[k] }))
+
+  /* 오류의 '고치기' — 구획을 펼치고 스크롤한 뒤 첫 입력에 포커스 */
+  useEffect(() => {
+    if (!focusTarget) return
+    if (focusTarget === 'exam' || focusTarget === 'anchor' || focusTarget === 'essay') {
+      setOpenSec((s) => ({ ...s, [focusTarget]: true }))
+    }
+    const t = setTimeout(() => {
+      const el = document.getElementById(`fs-${focusTarget}`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el?.querySelector<HTMLElement>('input, select, textarea')?.focus()
+      clearFocus()
+    }, 60)
+    return () => clearTimeout(t)
+  }, [focusTarget, clearFocus])
 
   /* 지도교사는 타이핑 중 쪼개지 않게 debounce */
   const [teachers, setTeachers] = useState(plan.teachers.join(', '))
@@ -211,12 +228,17 @@ function PlanForm({
     setTimeout(redistribute, 0)
   }
 
-  /** 앵커 자동 — 시험 주까지의 진도에서 마지막 성취기준 */
-  const autoAnchors = () => {
+  /*
+   * 앵커 자동 배정 — 성취기준을 회차 수만큼 등분해 각 구간의 마지막 기준을 앵커로.
+   * 앵커가 하나도 없을 때(새 계획서·과목 교체 직후)만 돈다. 교사가 지운 건 존중한다.
+   */
+  useEffect(() => {
+    if (codes.length === 0 || plan.exams.length === 0) return
+    if (!plan.exams.every((e) => !e.anchor_code)) return
     const sorted = [...plan.exams].sort((a, b) => a.week - b.week)
     let start = 0
     const next = sorted.map((e) => {
-      const share = Math.floor(((codes.length - start) * 1) / Math.max(1, sorted.length))
+      const share = Math.floor((codes.length - start) / Math.max(1, sorted.length))
       const end = Math.min(codes.length - 1, start + Math.max(0, share - 1))
       const code = codes[end] ?? null
       start = end + 1
@@ -224,7 +246,8 @@ function PlanForm({
     })
     patchPlan({ exams: next })
     setTimeout(redistribute, 0)
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subject.id, codes.length, plan.exams.length])
 
   /* ── 수행평가 ─────────────────────────────── */
 
@@ -232,38 +255,6 @@ function PlanForm({
     const taken = new Set(plan.performances.map((p) => p.week))
     const week = teachWeeks.find((w) => !taken.has(w.no) && w.no > 2)?.no ?? teachWeeks[0]?.no ?? 3
     upsertPerf({ name: '', intent: '', week })
-  }
-
-  /** 건너뛰기 — 영역명과 그 주 성취기준으로 자동 채움 */
-  const autoPerfs = () => {
-    const areas = subject.areas.length > 0 ? subject.areas : [{ no: '01', name: subject.name }]
-    // 한 영역 상한(35%) 때문에 개수가 모자라면 늘린다
-    const { ratios, needed } = splitPerfRatios(
-      plan.perf_ratio,
-      Math.max(2, plan.performances.length),
-      school.rules.perf_area_max,
-    )
-    const lastExam = [...plan.exams].sort((a, b) => b.week - a.week)[0]
-    const limit = lastExam ? lastExam.week : weeks.length
-    const slots = teachWeeks.filter((w) => w.no > 2 && w.no <= limit)
-
-    for (const p of [...plan.performances]) removePerf(p.id)
-    for (let i = 0; i < needed; i++) {
-      const area = areas[Math.min(i, areas.length - 1)]
-      const week =
-        slots[Math.floor(((i + 1) * slots.length) / (needed + 1))]?.no ?? slots[0]?.no ?? 3
-      const sample =
-        codes[Math.min(codes.length - 1, Math.floor(((i + 1) * codes.length) / (needed + 1)))]
-      const intent = sample
-        ? `${stdText(sample) || area.name}과 관련해 자료를 찾아 분석하고 자기 생각을 근거와 함께 표현하게 하고 싶다`
-        : `${area.name} 관련 활동을 수행하게 하고 싶다`
-      upsertPerf({
-        name: `${area.name} 탐구와 표현`.slice(0, school.rules.perf_name_maxlen),
-        intent,
-        week,
-        ratio: ratios[i],
-      })
-    }
   }
 
   /* ── 서술·논술형 ──────────────────────────── */
@@ -307,31 +298,21 @@ function PlanForm({
     })
   }
 
-  /** 건너뛰기 — 서술·논술 하한을 넘기는 가장 단순한 배분 */
-  const autoEssay = () => {
-    // 수행평가는 '서술·논술'이 잡힌 영역을 전부 인정하는 기본값으로 되돌린다
-    for (const p of plan.performances) {
-      upsertPerf({
-        id: p.id,
-        name: p.name,
-        intent: p.intent ?? p.activity ?? '',
-        week: p.week,
-        ratio: p.ratio,
-        essayRatio: null,
-      })
-    }
-    const perfEssay = plan.performances
-      .filter((p) => p.method_checks.includes('서술·논술'))
-      .reduce((s, p) => s + p.ratio, 0)
-    const need = Math.max(0, school.rules.essay_min - perfEssay)
-    // 지필에서 채워야 하는 몫 → 서술형 비중으로 환산
-    const pct = plan.exam_ratio > 0 ? Math.min(50, Math.ceil((need / plan.exam_ratio) * 100)) : 0
-    for (const e of plan.exams) setEssayPct(e.no, Math.max(30, pct))
-  }
-
   const essay = essayTotal(plan, plan.exam_ratio)
   const perfSum = plan.performances.reduce((s, p) => s + p.ratio, 0)
   const ready = plan.teachers.length > 0 && plan.performances.some((p) => p.name.trim())
+
+  /* 접힌 구획의 미리보기 — 지금 적용돼 있는 자동값을 그대로 요약한다 */
+  const examPreview =
+    plan.exam_count === 0
+      ? '정기시험 없음 · 수행평가 100%'
+      : `${plan.exam_count}회 · 정기 ${plan.exam_ratio}% : 수행 ${plan.perf_ratio}%${
+          perfSum !== plan.perf_ratio ? ` · 배정 ${perfSum}/${plan.perf_ratio}%` : ''
+        }`
+  const anchorPreview = plan.exams
+    .map((e) => `${e.no}회 ${e.anchor_code ?? '미정'}까지`)
+    .join(' · ')
+  const essayPreview = `지필 ${(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 ${perfEssayTotal(plan)}% = ${essay.toFixed(0)}% (기준 ${school.rules.essay_min}%)`
 
   return (
     <Screen
@@ -398,10 +379,13 @@ function PlanForm({
         </div>
       </Fieldset>
 
-      {/* ② 정기시험 · 비율 */}
+      {/* ② 정기시험 · 비율 — 자동값이 들어 있어 접어 두고 요약만 보여 준다 */}
       <Fieldset
         id="fs-exam"
         title="정기시험과 반영 비율"
+        preview={examPreview}
+        open={openSec.exam}
+        onToggle={() => toggleSec('exam')}
         action={
           <button className="btn btn-sm btn-ghost" onClick={() => setExamCount(0)}>
             수행 100%
@@ -453,16 +437,14 @@ function PlanForm({
         </div>
       </Fieldset>
 
-      {/* ③ 시험 범위 (앵커) */}
+      {/* ③ 시험 범위 (앵커) — 자동 배정된 앵커를 요약으로 보여 준다 */}
       {plan.exam_count > 0 && (
         <Fieldset
           id="fs-anchor"
           title="시험 범위"
-          action={
-            <button className="btn btn-sm btn-ghost" onClick={autoAnchors}>
-              건너뛰기 (자동)
-            </button>
-          }
+          preview={anchorPreview}
+          open={openSec.anchor}
+          onToggle={() => toggleSec('anchor')}
           error={firstError('anchor')}
         >
           <div className="field-box grid grid-cols-2 gap-3">
@@ -486,13 +468,16 @@ function PlanForm({
         </Fieldset>
       )}
 
-      {/* ④ 수행평가 */}
+      {/* ④ 수행평가 — 추가를 눌러야 입력 카드가 생긴다 */}
       <Fieldset
         id="fs-perf"
         title="수행평가"
+        hint={
+          plan.performances.length > 0 ? `배정 ${perfSum}% / ${plan.perf_ratio}%` : undefined
+        }
         action={
-          <button className="btn btn-sm btn-ghost" onClick={autoPerfs}>
-            건너뛰기 (자동)
+          <button className="btn btn-sm btn-ghost" onClick={addPerf}>
+            + 추가
           </button>
         }
         error={firstError('perf')}
@@ -500,22 +485,15 @@ function PlanForm({
         {plan.performances.map((p) => (
           <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
         ))}
-        <div>
-          <button className="btn btn-sm btn-ghost" onClick={addPerf}>
-            + 수행평가 추가
-          </button>
-        </div>
       </Fieldset>
 
-      {/* ⑤ 서술·논술형 */}
+      {/* ⑤ 서술·논술형 — 자동 배분을 요약으로 보여 준다 */}
       <Fieldset
         id="fs-essay"
         title="서술·논술형 비율"
-        action={
-          <button className="btn btn-sm btn-ghost" onClick={autoEssay}>
-            건너뛰기 (자동)
-          </button>
-        }
+        preview={essayPreview}
+        open={openSec.essay}
+        onToggle={() => toggleSec('essay')}
         error={firstError('essay')}
       >
         {/*

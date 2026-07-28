@@ -43,15 +43,42 @@ export function Fieldset({
   action,
   error,
   children,
+  preview,
+  open,
+  onToggle,
 }: {
   id: string
   title: ReactNode
   hint?: ReactNode
   action?: ReactNode
-  /** 이 구획에 걸린 검증 오류 — 있으면 테두리가 붉어진다 */
+  /** 이 구획에 걸린 검증 오류 — 있으면 테두리가 붉어지고 접을 수 없다 */
   error?: ReactNode
   children: ReactNode
+  /** 접혀 있을 때 보여 줄 자동 입력값 요약. onToggle과 함께 주면 접이식이 된다. */
+  preview?: ReactNode
+  open?: boolean
+  onToggle?: () => void
 }) {
+  const collapsible = onToggle != null
+  // 오류가 걸린 구획은 강제로 펼친다 — 접힌 채로 고칠 수는 없다
+  const expanded = !collapsible || open || !!error
+
+  if (!expanded) {
+    return (
+      <section id={id} className="rounded-box border border-line-card bg-surface-sub">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex w-full cursor-pointer items-center gap-4 border-0 bg-transparent px-6 py-4 text-left"
+        >
+          <h2 className="shrink-0 text-[15px] font-semibold">{title}</h2>
+          <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{preview}</span>
+          <span className="shrink-0 text-[13px] font-medium text-navy">직접 입력 ▾</span>
+        </button>
+      </section>
+    )
+  }
+
   return (
     <section
       id={id}
@@ -64,7 +91,14 @@ export function Fieldset({
           <h2 className="text-[15px] font-semibold">{title}</h2>
           {hint && <span className="text-[13px] text-ink-3">{hint}</span>}
         </div>
-        {action}
+        <div className="flex items-center gap-3">
+          {action}
+          {collapsible && !error && (
+            <a className="text-[13px]" onClick={onToggle}>
+              접기 ▴
+            </a>
+          )}
+        </div>
       </div>
       {children}
       {error && <div className="text-[13px] text-red">{error}</div>}
