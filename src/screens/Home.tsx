@@ -375,7 +375,7 @@ function PlanForm({
 
   /* 접힌 구획의 미리보기 — 회차마다 한 줄씩. 가로로 이으면 어느 회차 범위인지 흐려진다 */
   const anchorPreview = (
-    <div className="flex w-fit max-w-full flex-col gap-1 rounded-control border border-line-input bg-surface px-3 py-2 text-[14px] text-ink">
+    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-control border border-line-input bg-surface px-3 py-2 text-[14px] text-ink">
       {plan.exams.map((e) => (
         <span key={e.no} className="truncate">
           {e.no}회 정기고사 시험범위: {e.anchor_code ?? '미정'}까지
@@ -552,9 +552,13 @@ function PlanForm({
            * 두 열로 놓는다 — 한 열이면 이름과 숫자 칸 사이가 허허벌판이 된다.
            * 두 숫자 모두 '전체 성적에서 차지하는 %'라 세로로 훑으며 더할 수 있다.
            */}
-          <div className="grid gap-x-7 gap-y-2 lg:grid-cols-2">
+          {/*
+           * 폼 폭이 880px로 고정이라 화면 크기와 무관하게 두 열로 간다.
+           * (좁은 화면만 한 열 — sm 미만)
+           */}
+          <div className="grid gap-x-7 gap-y-2 sm:grid-cols-2">
             <RatioHead />
-            <RatioHead className="hidden lg:grid" />
+            <RatioHead className="hidden sm:grid" />
 
             {plan.exams.map((e) => (
               <RatioRow
@@ -828,7 +832,7 @@ function PerfCard({
           <span className="label h-5" aria-hidden />
           {/* 성취기준 — 안 고르면 진도에 맞춰 자동으로 채운다 */}
           <button className="btn btn-sm btn-accent" onClick={() => setPicking(true)}>
-            성취기준 수정
+            성취기준 입력
             <svg
               className="ml-1.5 inline-block align-[-2px]"
               width="14"
