@@ -33,6 +33,10 @@ function scrub(s: string): string {
 
 interface Doc {
   file: string
+  /** 몇 번째 구역인지 — 학년 계획서는 과목마다 구역이 갈린다 */
+  section: number
+  /** 문서 첫머리에서 읽은 과목명 */
+  subject: string
   I: { blocks: string[]; splitByTeacher: boolean }
   II: string[]
   III1: string[]
@@ -41,11 +45,15 @@ interface Doc {
   warnings: string[]
 }
 
-async function extract(path: string, file: string): Promise<Doc> {
+async function extract(path: string, file: string, section: number): Promise<Doc> {
   const warnings: string[] = []
-  const doc = await HwpxDoc.load(readFileSync(path))
+  const doc = await HwpxDoc.load(readFileSync(path), section)
   const tables = doc.topTables()
   const tops = doc.topParas()
+
+  // 문서 첫머리 '2026학년도 2학년 1학기 < 문학 >' 에서 과목명을 얻는다
+  const title = tops.map((p) => doc.paraText(p)).find((t) => /<[^>]+>/.test(t) && /학년도/.test(t))
+  const subject = title?.match(/<\s*([^>]+?)\s*>/)?.[1] ?? ''
 
   const sectionTable = (roman: string) =>
     tables.find((t) => doc.cellText(t, 0, 0) === roman && doc.rows(t).length === 1)
@@ -131,7 +139,17 @@ async function extract(path: string, file: string): Promise<Doc> {
   }
   if (Object.keys(XI_semesterLevels).length === 0) warnings.push('Ⅺ 학기단위 성취수준을 못 찾음')
 
-  return { file, I: { blocks: IBlocks, splitByTeacher }, II, III1, IV, XI_semesterLevels, warnings }
+  return {
+    file,
+    section,
+    subject,
+    I: { blocks: IBlocks, splitByTeacher },
+    II,
+    III1,
+    IV,
+    XI_semesterLevels,
+    warnings,
+  }
 }
 
 async function main() {
@@ -141,11 +159,25 @@ async function main() {
 
   const docs: Doc[] = []
   for (const f of files) {
+    const path = join(SAMPLES, f)
+    let count = 1
     try {
-      docs.push(await extract(join(SAMPLES, f), f))
-    } catch (e) {
-      console.log(`  ✗ ${f}: ${e instanceof Error ? e.message : e}`)
+      count = await HwpxDoc.sectionCount(readFileSync(path))
+    } catch {
+      console.log(`  ✗ ${f}: 열지 못했습니다`)
+      continue
     }
+    for (let s = 0; s < count; s++) {
+      try {
+        const d = await extract(path, f, s)
+        // 과목 계획서가 아닌 구역(표지·목차 등)은 건너뛴다
+        if (d.II.length === 0 && d.III1.length === 0 && !d.IV) continue
+        docs.push(d)
+      } catch (e) {
+        console.log(`  ✗ ${f} 구역${s}: ${e instanceof Error ? e.message : e}`)
+      }
+    }
+    console.log(`  ${f} — 구역 ${count}개`)
   }
 
   /* 항목 수 분포 — '가~마 다섯 개'가 맞는지부터 사실로 확인한다 */

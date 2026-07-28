@@ -96,9 +96,19 @@ export class HwpxDoc {
     public sec: El,
     /** Contents/header.xml — 서식(charPr·borderFill) 정의가 여기 있다 */
     private headerDoc: Document,
+    /** 지금 들고 있는 구역 파일 이름 — save()가 여기로 되쓴다 */
+    private sectionName: string = SECTION,
   ) {}
 
-  static async load(bytes: Uint8Array | ArrayBuffer): Promise<HwpxDoc> {
+  /**
+   * @param section 몇 번째 구역을 열지. 기본 0.
+   *
+   * ★ 한글은 '구역 나누기'마다 `Contents/sectionN.xml`을 따로 만든다.
+   * 학교가 배포하는 학년 전체 계획서는 **과목마다 구역이 갈려 있어**
+   * section0만 읽으면 첫 과목만 보인다. 여러 과목을 훑을 때는
+   * `sectionCount()`로 세고 번호를 돌려 가며 열 것.
+   */
+  static async load(bytes: Uint8Array | ArrayBuffer, section = 0): Promise<HwpxDoc> {
     const zip = await JSZip.loadAsync(bytes)
     const order: string[] = []
     const files = new Map<string, Uint8Array>()
@@ -112,8 +122,23 @@ export class HwpxDoc {
         Buffer.from(files.get(name)!).toString('utf8'),
         'text/xml',
       ) as unknown as Document
-    const doc = parse(SECTION)
-    return new HwpxDoc(files, order, doc, doc.documentElement as unknown as El, parse(HEADER))
+    const name = `Contents/section${section}.xml`
+    if (!files.has(name)) throw new Error(`${name} 이 없습니다`)
+    const doc = parse(name)
+    return new HwpxDoc(
+      files,
+      order,
+      doc,
+      doc.documentElement as unknown as El,
+      parse(HEADER),
+      name,
+    )
+  }
+
+  /** 이 파일에 구역이 몇 개인지 (학년 전체 계획서는 과목 수만큼 나뉜다) */
+  static async sectionCount(bytes: Uint8Array | ArrayBuffer): Promise<number> {
+    const zip = await JSZip.loadAsync(bytes)
+    return Object.keys(zip.files).filter((n) => /^Contents\/section\d+\.xml$/.test(n)).length
   }
 
   /* ── 조회 ────────────────────────────────── */
@@ -411,10 +436,15 @@ export class HwpxDoc {
       const after = cells.find((tc) => colOf(tc) >= itemEnd) ?? null
 
       if (have < want) {
-        // 모자라면 마지막 항목 칸을 복제해 비고 앞에 끼워 넣는다
+        /*
+         * 모자라면 마지막 항목 칸을 복제해 비고 앞에 끼워 넣는다.
+         * ★ 복제본의 가로 병합은 반드시 1로 되돌린다. 본이 병합된 칸이면
+         *   한 번 끼울 때마다 열이 여러 칸씩 늘어 표가 넘친다.
+         */
         const proto = items[items.length - 1]
         for (let k = have; k < want; k++) {
           const clone = proto.cloneNode(true) as El
+          this.setColSpan(clone, 1)
           if (after) tr.insertBefore(clone, after)
           else tr.appendChild(clone)
         }
@@ -533,6 +563,45 @@ export class HwpxDoc {
         childrenOf(tc, 'cellSz')[0]?.setAttribute('width', String(each * span))
       }
     }
+  }
+
+  /**
+   * 한 행의 항목 구간을 주어진 폭들로 다시 만든다.
+   *
+   * Ⅳ 표는 행마다 병합이 다르다. '평가 방법'·'영역 만점'은 문항 유형별로
+   * 쪼개져 있고, '반영 비율'·'성취 기준'·'평가 시기'는 회차 하나가 그 유형들을
+   * 통째로 덮는다. 열 수만 맞추면 이 병합이 어긋나 값이 밀린다.
+   *
+   * @param spans 항목 칸들의 가로 폭. 합이 항목 열 수와 같아야 한다.
+   */
+  setItemSpans(tbl: El, rowIdx: number, headCols: number, tailCols: number, spans: number[]): void {
+    const colOf = (tc: El) => Number(childrenOf(tc, 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
+    const total = Number(tbl.getAttribute('colCnt') ?? '0')
+    const itemEnd = total - tailCols
+    const tr = this.rows(tbl)[rowIdx]
+    if (!tr || spans.length === 0) return
+
+    const cells = childrenOf(tr, 'tc')
+    const items = cells.filter((tc) => colOf(tc) >= headCols && colOf(tc) < itemEnd)
+    if (items.length === 0) return
+    if (items.length === spans.length) {
+      // 개수가 맞으면 폭만 고친다 — 칸 내용(빨간 조각 등)을 지키는 편이 낫다
+      items.forEach((tc, i) => this.setColSpan(tc, spans[i]))
+    } else {
+      const base = colOf(cells[0])
+      const after = cells.find((tc) => colOf(tc) >= itemEnd) ?? null
+      const proto = items[items.length - 1]
+      for (const tc of items) tr.removeChild(tc)
+      for (const span of spans) {
+        const clone = proto.cloneNode(true) as El
+        this.setColSpan(clone, span)
+        if (after) tr.insertBefore(clone, after)
+        else tr.appendChild(clone)
+      }
+      const head = childrenOf(tr, 'tc')[0]
+      if (head) childrenOf(head, 'cellAddr')[0]?.setAttribute('colAddr', String(base))
+    }
+    this.renumberCols(tbl, total)
   }
 
   /** 한 칸의 가로 병합 폭. 그룹 머리(정기시험·수행평가)를 다시 씌울 때 쓴다. */
@@ -769,7 +838,7 @@ export class HwpxDoc {
       const xml = serialized.trimStart().startsWith('<?xml') ? serialized : XML_DECL + serialized
       this.files.set(name, new Uint8Array(Buffer.from(xml, 'utf8')))
     }
-    write(SECTION, this.doc)
+    write(this.sectionName, this.doc)
     write(HEADER, this.headerDoc)
 
     const out = new JSZip()

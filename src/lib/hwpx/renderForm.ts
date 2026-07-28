@@ -355,8 +355,12 @@ export async function renderForm(
      */
     const HEAD_COLS = 2 // 구분 · 평가영역
     const TAIL_COLS = 1 // 비고
-    const examCols =
-      plan.exams.length > 0 ? (plan.exams[0]?.parts.length ?? 1) + (plan.exams.length - 1) : 0
+    /*
+     * 정기시험은 회차마다 '문항 유형 수'만큼 열을 쓴다.
+     * 실물 57개 과목을 세어 보니 국어·한국사는 회차당 1열(합계 2), 과학·영어는
+     * 2열(합계 4), 수학은 3열(합계 6)이었다. 첫 회차만 쪼개진다고 보면 어긋난다.
+     */
+    const examCols = plan.exams.reduce((s, e) => s + Math.max(1, e.parts.length), 0)
     const wantCols = examCols + plan.performances.length
 
     if (wantCols > 0) {
@@ -400,6 +404,38 @@ export async function renderForm(
         }
         doc.renumberCols(evalTbl, HEAD_COLS + wantCols + TAIL_COLS)
       }
+
+      /*
+       * 행마다 병합을 다시 잡는다.
+       * '평가 방법'·'영역 만점'은 문항 유형별로 쪼개지고, 나머지 값 행은
+       * 회차 하나가 그 유형들을 통째로 덮는다.
+       */
+      const perfOnes = plan.performances.map(() => 1)
+      const splitSpans = [...plan.exams.flatMap((e) => e.parts.map(() => 1)), ...perfOnes]
+      const mergedSpans = [
+        ...plan.exams.map((e) => Math.max(1, e.parts.length)),
+        ...perfOnes,
+      ]
+      const rowsOf = doc.rows(evalTbl)
+      const labelAt = (label: string) =>
+        rowsOf.findIndex((_, r) =>
+          childrenOf(rowsOf[r], 'tc').some(
+            (_c, ci) => (doc.cellText(evalTbl, r, ci) ?? '').trim() === label,
+          ),
+        )
+      doc.setItemSpans(evalTbl, 1, HEAD_COLS, TAIL_COLS, mergedSpans) // 회차·수행평가명
+      for (const [label, spans] of [
+        ['평가 방법', splitSpans],
+        ['영역 만점', splitSpans],
+        ['반영 비율', mergedSpans],
+        ['서술형･논술형', mergedSpans],
+        ['성취 기준', mergedSpans],
+        ['평가 시기', mergedSpans],
+      ] as const) {
+        const at = labelAt(label)
+        if (at >= 0) doc.setItemSpans(evalTbl, at, HEAD_COLS, TAIL_COLS, spans)
+      }
+
       did(`Ⅳ 열 ${wantCols}개 (정기시험 ${examCols} · 수행평가 ${plan.performances.length})`)
     }
 
@@ -460,16 +496,13 @@ export async function renderForm(
 
     // 양식의 '평가 방법'·'영역 만점' 행은 1회 정기시험만 문항 구분(선택형·서술형)까지
     // 쪼개고 2회부터는 합계로 적는다. 빨간 칸 수가 그렇게 잡혀 있다.
-    const first = plan.exams[0]
-    const rest = plan.exams.slice(1)
+    // 회차마다 문항 유형별로 한 칸씩 — 열을 그렇게 잡아 두었다
     const methodVals = [
-      ...(first?.parts.map((p) => p.kind) ?? []),
-      ...rest.map((e) => e.parts.map((p) => p.kind).join('·')),
+      ...plan.exams.flatMap((e) => e.parts.map((p) => p.kind)),
       ...plan.performances.map((p) => p.method),
     ]
     const maxVals = [
-      ...(first?.parts.map((p) => `${p.points}점`) ?? []),
-      ...rest.map((e) => `${e.parts.reduce((s, p) => s + p.points, 0)}점`),
+      ...plan.exams.flatMap((e) => e.parts.map((p) => `${p.points}점`)),
       ...plan.performances.map((p) => `${p.max_score}점`),
     ]
     void examParts
