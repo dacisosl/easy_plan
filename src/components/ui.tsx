@@ -43,7 +43,6 @@ export function Fieldset({
   action,
   error,
   children,
-  step = 0,
 }: {
   id: string
   title: ReactNode
@@ -52,16 +51,13 @@ export function Fieldset({
   /** 이 구획에 걸린 검증 오류 — 있으면 테두리가 붉어진다 */
   error?: ReactNode
   children: ReactNode
-  /** 떠오르는 순서 — 앞 구획보다 조금 늦게 나타난다 */
-  step?: number
 }) {
   return (
     <section
       id={id}
-      className={`rise flex flex-col gap-4 rounded-box border px-6 py-5 ${
+      className={`flex flex-col gap-4 rounded-box border px-6 py-5 ${
         error ? 'border-red-line bg-red-bg/40' : 'border-line'
       }`}
-      style={{ animationDelay: `${step * 70}ms` }}
     >
       <div className="flex items-baseline justify-between gap-4">
         <div className="flex items-baseline gap-3">
@@ -121,7 +117,6 @@ export function Field({
  */
 export function ChipPicker({
   title,
-  hint,
   options,
   selected,
   max,
@@ -129,7 +124,6 @@ export function ChipPicker({
   onClose,
 }: {
   title: ReactNode
-  hint?: ReactNode
   options: { value: string; label: string; sub?: string }[]
   selected: string[]
   max?: number
@@ -150,34 +144,40 @@ export function ChipPicker({
       onClick={onClose}
     >
       <div
-        className="rise flex max-h-[80vh] w-full max-w-[720px] flex-col gap-4 rounded-card bg-surface p-6"
+        className="flex h-full max-h-[92vh] w-full max-w-[1280px] flex-col gap-4 rounded-card bg-surface p-7"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-baseline justify-between gap-4">
           <h2 className="text-base font-semibold">{title}</h2>
           <span className="text-[13px] text-ink-3">
             {picked.length}
-            {max != null ? ` / ${max}` : ''} 선택
+            {max != null ? ` / ${max}` : ''}
           </span>
         </div>
-        {hint && <p className="text-[13px] text-ink-2">{hint}</p>}
 
-        <div className="flex flex-wrap gap-2 overflow-y-auto py-1">
+        {/* 성취기준은 문장이 길다 — 2열로 펼쳐 한 화면에 담는다 */}
+        <div className="grid flex-1 grid-cols-1 content-start gap-2 overflow-y-auto pr-1 lg:grid-cols-2">
           {options.map((o) => {
             const on = picked.includes(o.value)
+            const blocked = !on && full
             return (
               <button
                 key={o.value}
                 onClick={() => toggle(o.value)}
-                disabled={!on && full}
-                title={o.sub}
-                className={`chip max-w-full text-left ${on ? 'chip-on' : ''} ${
-                  !on && full ? 'cursor-not-allowed opacity-40' : ''
+                disabled={blocked}
+                className={`flex w-full items-start gap-3 rounded-control border px-4 py-3 text-left transition-colors ${
+                  on
+                    ? 'border-navy bg-navy text-white'
+                    : blocked
+                      ? 'cursor-not-allowed border-line bg-surface-off text-ink-4'
+                      : 'border-line-input bg-surface hover:border-navy-line-hover'
                 }`}
               >
-                <span className="font-medium">{o.label}</span>
+                <span className={`shrink-0 font-mono text-[13px] ${on ? '' : 'text-navy'}`}>
+                  {o.label}
+                </span>
                 {o.sub && (
-                  <span className={`ml-2 text-[12px] ${on ? 'text-white/80' : 'text-ink-3'}`}>
+                  <span className={`text-[13px] leading-snug ${on ? 'text-white/85' : 'text-ink-2'}`}>
                     {o.sub}
                   </span>
                 )}
@@ -186,18 +186,13 @@ export function ChipPicker({
           })}
         </div>
 
-        <div className="flex items-center justify-between gap-4 border-t border-line-soft pt-4">
-          <span className="hint">
-            하나도 고르지 않고 저장하면 진도에 맞춰 자동으로 채웁니다
-          </span>
-          <div className="flex gap-2">
-            <button className="btn btn-sm btn-ghost" onClick={onClose}>
-              취소
-            </button>
-            <button className="btn btn-sm" onClick={() => onSave(picked)}>
-              저장
-            </button>
-          </div>
+        <div className="flex items-center justify-end gap-2 border-t border-line-soft pt-4">
+          <button className="btn btn-sm btn-ghost" onClick={onClose}>
+            취소
+          </button>
+          <button className="btn btn-sm" onClick={() => onSave(picked)}>
+            저장
+          </button>
         </div>
       </div>
     </div>

@@ -62,6 +62,21 @@ export function splitScore(max: number, parts: number): number[] {
   return Array.from({ length: parts }, (_, i) => base + (i < rem ? 1 : 0))
 }
 
+/**
+ * 수행평가 비율을 영역 수만큼 나누되 한 영역이 상한(기본 35%)을 넘지 않게 한다.
+ *
+ * 상한 때문에 다 담지 못하면 영역 수를 늘려야 한다 — 몇 개가 필요한지도 함께 돌려준다.
+ * (검증 규칙 2가 '수행평가 한 영역 ≤ 35%'를 요구한다)
+ */
+export function splitPerfRatios(
+  total: number,
+  count: number,
+  areaMax: number,
+): { ratios: number[]; needed: number } {
+  const needed = Math.max(1, count, Math.ceil(total / Math.max(1, areaMax)))
+  return { ratios: splitScore(total, needed).map((r) => Math.min(r, areaMax)), needed }
+}
+
 const ELEMENT_BY_CHECK: Record<PerfMethodCheck, { area: string; element: string; verbs: [string, string, string] }> = {
   '서술·논술': {
     area: '표현',

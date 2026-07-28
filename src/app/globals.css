@@ -93,20 +93,19 @@
    ══════════════════════════════════════════════════════════ */
 
 @layer components {
-  /* 입력 칸은 연한 바탕을 깔아 '쓰는 자리'가 한눈에 보이게 한다 */
+  /*
+   * 입력 칸 자체는 흰색이고, 칸을 감싸는 구역(.field-box)에 연한 바탕을 깐다.
+   * 수행평가 카드처럼 '한 덩어리'로 보이게 하려는 것이다.
+   */
   .control {
-    @apply h-11 w-full rounded-control border border-line-input px-3 text-[15px];
-    background: var(--color-field);
-    transition:
-      background-color 140ms ease,
-      border-color 140ms ease;
+    @apply h-11 w-full rounded-control border border-line-input bg-surface px-3 text-[15px];
+    transition: border-color 140ms ease;
   }
   .control:hover:not(:disabled) {
     @apply border-navy-line-hover;
   }
   .control:focus {
     @apply border-navy-line-hover;
-    background: var(--color-surface);
   }
   .control:focus-visible {
     @apply outline-2 -outline-offset-1 outline-navy-line-hover;
@@ -220,34 +219,15 @@
   .sec-title {
     @apply text-[15px] font-semibold;
   }
-}
 
-/* ══════════════════════════════════════════════════════════
-   동작 — 입력 구획이 순서대로 떠오른다.
-
-   앞 구획을 채우면 다음 구획이 나타나므로, 화면 전체가 한꺼번에
-   쏟아지지 않는다. 접근성 설정에서 동작을 줄였으면 바로 보여 준다.
-   ══════════════════════════════════════════════════════════ */
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
+  /* 입력 칸 묶음 — 연한 바탕으로 '쓰는 자리'를 한 덩어리로 보여 준다 */
+  .field-box {
+    @apply rounded-control border border-line-soft p-3;
+    background: var(--color-field);
   }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.rise {
-  animation: rise 360ms cubic-bezier(0.22, 0.8, 0.36, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rise {
-    animation: none;
-  }
   .control {
     transition: none;
   }

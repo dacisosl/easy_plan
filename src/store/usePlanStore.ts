@@ -314,9 +314,10 @@ export const usePlanStore = create<State & Actions>()(
 
         const prev = plan.performances.find((p) => p.id === input.id)
         const others = plan.performances.filter((p) => p.id !== input.id)
-        // 비율을 정하지 않으면 남은 몫을 준다
+        // 비율을 정하지 않으면 남은 몫을 준다. 한 영역 상한(규칙 2)은 넘기지 않는다.
         const usedRatio = others.reduce((s, p) => s + p.ratio, 0)
-        const ratio = input.ratio ?? Math.max(0, plan.perf_ratio - usedRatio)
+        const cap = school.rules.perf_area_max
+        const ratio = Math.min(cap, input.ratio ?? Math.max(0, plan.perf_ratio - usedRatio))
 
         // 교사가 직접 고른 값은 다시 계산하지 않고 이어 간다
         const standardCodes =

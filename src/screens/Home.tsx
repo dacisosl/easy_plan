@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChipPicker, ColorKey, Field, Fieldset, Screen } from '@/components/ui'
+import { ChipPicker, Field, Fieldset, Screen } from '@/components/ui'
 import { SubjectPicker } from '@/components/SubjectPicker'
 import { usePlanStore } from '@/store/usePlanStore'
 import {
@@ -20,7 +20,7 @@ import {
   perfEssayTotal,
   weeksOf,
 } from '@/lib/derive'
-import { methodsFromIntent } from '@/lib/autofill'
+import { methodsFromIntent, splitPerfRatios } from '@/lib/autofill'
 import { validate } from '@/lib/validate'
 import type { FocusTarget, Subject } from '@/types'
 
@@ -110,7 +110,6 @@ export function Home() {
   return (
     <PlanForm
       key={plan.id}
-      loading={loading}
       pickError={pickError}
       onPickSubject={pickSubject}
       onDone={() => go('generating')}
@@ -121,12 +120,10 @@ export function Home() {
 /* ══════════════════════════════════════════════ */
 
 function PlanForm({
-  loading,
   pickError,
   onPickSubject,
   onDone,
 }: {
-  loading: boolean
   pickError: string | null
   onPickSubject: (name: string, listed: boolean) => void
   onDone: () => void
@@ -172,9 +169,39 @@ function PlanForm({
     setTimeout(redistribute, 0)
   }
 
+  /**
+   * 정기시험 : 수행평가 비율.
+   *
+   * 시험이 있는데 정기시험 0%면 서술형을 아무리 올려도 반영되지 않는다.
+   * 그런 상태를 만들 수 없게 시험이 있으면 최소 1%를 남긴다.
+   * 수행 100%를 원하면 '수행 100%' 버튼으로 시험 자체를 없애야 한다.
+   */
   const setRatio = (exam: number) => {
-    const e = Math.max(0, Math.min(100, exam))
+    const floor = plan.exam_count > 0 ? 1 : 0
+    const e = Math.max(floor, Math.min(100, Math.round(exam) || 0))
     patchPlan({ exam_ratio: e, perf_ratio: 100 - e })
+    setTimeout(rebalancePerfRatios, 0)
+  }
+
+  /** 수행평가 비율 합이 배정액과 맞고, 한 영역이 상한을 넘지 않게 다시 나눈다 */
+  const rebalancePerfRatios = () => {
+    const current = usePlanStore.getState().plans.find((p) => p.id === plan.id)
+    if (!current || current.performances.length === 0) return
+    const { ratios } = splitPerfRatios(
+      current.perf_ratio,
+      current.performances.length,
+      school.rules.perf_area_max,
+    )
+    current.performances.forEach((p, i) => {
+      if (p.ratio === ratios[i]) return
+      upsertPerf({
+        id: p.id,
+        name: p.name,
+        intent: p.intent ?? p.activity ?? '',
+        week: p.week,
+        ratio: ratios[i],
+      })
+    })
   }
 
   const setAnchor = (no: number, code: string) => {
@@ -210,16 +237,23 @@ function PlanForm({
   /** 건너뛰기 — 영역명과 그 주 성취기준으로 자동 채움 */
   const autoPerfs = () => {
     const areas = subject.areas.length > 0 ? subject.areas : [{ no: '01', name: subject.name }]
-    const n = Math.max(2, plan.performances.length)
+    // 한 영역 상한(35%) 때문에 개수가 모자라면 늘린다
+    const { ratios, needed } = splitPerfRatios(
+      plan.perf_ratio,
+      Math.max(2, plan.performances.length),
+      school.rules.perf_area_max,
+    )
     const lastExam = [...plan.exams].sort((a, b) => b.week - a.week)[0]
     const limit = lastExam ? lastExam.week : weeks.length
     const slots = teachWeeks.filter((w) => w.no > 2 && w.no <= limit)
 
     for (const p of [...plan.performances]) removePerf(p.id)
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < needed; i++) {
       const area = areas[Math.min(i, areas.length - 1)]
-      const week = slots[Math.floor(((i + 1) * slots.length) / (n + 1))]?.no ?? slots[0]?.no ?? 3
-      const sample = codes[Math.min(codes.length - 1, Math.floor(((i + 1) * codes.length) / (n + 1)))]
+      const week =
+        slots[Math.floor(((i + 1) * slots.length) / (needed + 1))]?.no ?? slots[0]?.no ?? 3
+      const sample =
+        codes[Math.min(codes.length - 1, Math.floor(((i + 1) * codes.length) / (needed + 1)))]
       const intent = sample
         ? `${stdText(sample) || area.name}과 관련해 자료를 찾아 분석하고 자기 생각을 근거와 함께 표현하게 하고 싶다`
         : `${area.name} 관련 활동을 수행하게 하고 싶다`
@@ -227,6 +261,7 @@ function PlanForm({
         name: `${area.name} 탐구와 표현`.slice(0, school.rules.perf_name_maxlen),
         intent,
         week,
+        ratio: ratios[i],
       })
     }
   }
@@ -298,27 +333,16 @@ function PlanForm({
   const perfSum = plan.performances.reduce((s, p) => s + p.ratio, 0)
   const ready = plan.teachers.length > 0 && plan.performances.some((p) => p.name.trim())
 
-  /*
-   * 구획은 앞 구획이 채워지면 하나씩 떠오른다 — 한 화면에 다 쏟지 않는다.
-   *   기본 → (과목 확정) 정기시험·비율 → (시험 설정) 시험 범위·수행평가 → (수행평가 입력) 서논술형
-   */
-  const showExam = subject.name.trim().length > 0
-  const showAnchor = showExam && plan.exam_count > 0
-  // 지도교사까지 넣으면 기본이 끝난 것으로 본다
-  const showPerf = showExam && plan.teachers.length > 0
-  const showEssay = showPerf && plan.performances.some((p) => p.name.trim())
-
   return (
     <Screen
       title={subject.name}
       subtitle={`${school.calendars.find((c) => c.semester === plan.semester)?.year ?? ''}학년도 ${plan.semester}학기 · 성취기준 ${subject.standards.length}개`}
     >
       {/* ① 기본 */}
-      <Fieldset id="fs-basic" title="기본" hint="과목 · 학년 · 시수 · 교사 · 학기" error={firstError('basic')}>
-        <div className="grid grid-cols-[1.6fr_0.8fr_1fr_1.4fr_0.8fr] gap-3">
+      <Fieldset id="fs-basic" title="기본" error={firstError('basic')}>
+        <div className="field-box grid grid-cols-[1.6fr_0.8fr_1fr_1.4fr_0.8fr] gap-3">
           <Field label="과목">
             <SubjectPicker value={subject.name} onPick={onPickSubject} />
-            {loading && <span className="hint">불러오는 중…</span>}
             {pickError && <span className="text-[13px] text-red">{pickError}</span>}
           </Field>
           <Field label="학년">
@@ -334,7 +358,7 @@ function PlanForm({
               ))}
             </select>
           </Field>
-          <Field label="주당 시수" hint="예정시간 계산 기준">
+          <Field label="주당 시수">
             <select
               className="control"
               value={plan.credit}
@@ -342,12 +366,12 @@ function PlanForm({
             >
               {[1, 2, 3, 4, 5].map((c) => (
                 <option key={c} value={c}>
-                  {c}시간 ({c}학점)
+                  {c}시간
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="지도교사" hint="쉼표로 구분">
+          <Field label="지도교사">
             <input
               className="control"
               value={teachers}
@@ -375,21 +399,17 @@ function PlanForm({
       </Fieldset>
 
       {/* ② 정기시험 · 비율 */}
-      {showExam && (
-        <Fieldset
-          key="exam"
-          step={1}
-          id="fs-exam"
-          title="정기시험과 반영 비율"
-          hint={`${weeks.filter((w) => w.is_exam).map((w) => `${w.no}주`).join(' · ') || '시험 주 없음'}`}
-          action={
-            <button className="btn btn-sm btn-ghost" onClick={() => setExamCount(0)}>
-              수행 100%
-            </button>
-          }
-          error={firstError('exam')}
-        >
-        <div className="grid grid-cols-[1fr_1fr_1fr_1.2fr] items-end gap-3">
+      <Fieldset
+        id="fs-exam"
+        title="정기시험과 반영 비율"
+        action={
+          <button className="btn btn-sm btn-ghost" onClick={() => setExamCount(0)}>
+            수행 100%
+          </button>
+        }
+        error={firstError('exam')}
+      >
+        <div className="field-box grid grid-cols-[1fr_1fr_1fr_1.2fr] gap-3">
           <Field label="정기시험 횟수">
             <select
               className="control"
@@ -420,24 +440,24 @@ function PlanForm({
               onChange={(e) => setRatio(100 - (Number(e.target.value) || 0))}
             />
           </Field>
-          <div className="pb-2 text-[13px] text-ink-2">
-            수행평가 배정 {perfSum}% / {plan.perf_ratio}%
-            {perfSum !== plan.perf_ratio && (
-              <span className="text-amber"> · {plan.perf_ratio - perfSum}% 남음</span>
-            )}
-          </div>
-          </div>
-        </Fieldset>
-      )}
+          <Field label="배정">
+            <div className="flex h-11 items-center text-[15px]">
+              {perfSum}% / {plan.perf_ratio}%
+              {perfSum !== plan.perf_ratio && (
+                <span className="ml-2 text-[13px] text-amber">
+                  {plan.perf_ratio - perfSum > 0 ? '남음' : '초과'}
+                </span>
+              )}
+            </div>
+          </Field>
+        </div>
+      </Fieldset>
 
       {/* ③ 시험 범위 (앵커) */}
-      {showAnchor && (
+      {plan.exam_count > 0 && (
         <Fieldset
-          key="anchor"
-          step={2}
           id="fs-anchor"
           title="시험 범위"
-          hint="회차별로 어디까지 나가는지 — 진도 배분의 기준입니다"
           action={
             <button className="btn btn-sm btn-ghost" onClick={autoAnchors}>
               건너뛰기 (자동)
@@ -445,7 +465,7 @@ function PlanForm({
           }
           error={firstError('anchor')}
         >
-          <div className="grid grid-cols-2 gap-3">
+          <div className="field-box grid grid-cols-2 gap-3">
             {plan.exams.map((e) => (
               <Field key={e.no} label={`${e.no}회 (${e.week}주) 마지막 성취기준`}>
                 <select
@@ -463,129 +483,103 @@ function PlanForm({
               </Field>
             ))}
           </div>
-          <span className="hint">
-            성취기준 {codes.length}개를 수업 {teachWeeks.length}주에 나눕니다 — 한 주에 1~3개,
-            길면 2주에 걸칩니다
-          </span>
         </Fieldset>
       )}
 
       {/* ④ 수행평가 */}
-      {showPerf && (
-        <Fieldset
-          key="perf"
-          step={3}
-          id="fs-perf"
-          title="수행평가"
-          hint="명칭 · 실시 시기 · 내용만 — 루브릭은 한글에서 다듬습니다"
-          action={
-            <button className="btn btn-sm btn-ghost" onClick={autoPerfs}>
-              건너뛰기 (자동)
-            </button>
-          }
-          error={firstError('perf')}
-        >
-          {plan.performances.length === 0 && (
-            <p className="text-sm text-ink-2">
-              아직 없습니다. 아래에서 추가하거나 자동으로 채우세요.
-            </p>
-          )}
-          {plan.performances.map((p) => (
-            <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
-          ))}
-          <div className="flex items-center gap-4">
-            <button className="btn btn-sm btn-ghost" onClick={addPerf}>
-              + 수행평가 추가
-            </button>
-            <span className="hint">비율·배점·루브릭 뼈대는 코드가 계산합니다</span>
-          </div>
-        </Fieldset>
-      )}
+      <Fieldset
+        id="fs-perf"
+        title="수행평가"
+        action={
+          <button className="btn btn-sm btn-ghost" onClick={autoPerfs}>
+            건너뛰기 (자동)
+          </button>
+        }
+        error={firstError('perf')}
+      >
+        {plan.performances.map((p) => (
+          <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
+        ))}
+        <div>
+          <button className="btn btn-sm btn-ghost" onClick={addPerf}>
+            + 수행평가 추가
+          </button>
+        </div>
+      </Fieldset>
 
       {/* ⑤ 서술·논술형 */}
-      {showEssay && (
-        <Fieldset
-          key="essay"
-          step={4}
-          id="fs-essay"
-          title="서술·논술형 비율"
-          hint={`합계 ${school.rules.essay_min}% 이상이어야 합니다`}
-          action={
-            <button className="btn btn-sm btn-ghost" onClick={autoEssay}>
-              건너뛰기 (자동)
-            </button>
-          }
-          error={firstError('essay')}
-        >
-          <div className="flex flex-wrap items-start gap-4">
-            {plan.exams.map((e) => (
-              <Field
-                key={e.no}
-                label={`${e.no}회 정기시험 서술형`}
-                hint="시험 만점 대비 %"
-                className="w-44"
-              >
-                <input
-                  className="control text-center"
-                  type="number"
-                  value={essayPct(e.no)}
-                  onChange={(ev) => setEssayPct(e.no, Number(ev.target.value) || 0)}
-                />
-              </Field>
-            ))}
-            {plan.performances.map((p) => (
-              <Field
-                key={p.id}
-                label={`${p.name || '(이름 없음)'} 서논술`}
-                hint={`이 영역 ${p.ratio}% 중`}
-                className="w-44"
-              >
-                <input
-                  className="control text-center"
-                  type="number"
-                  value={perfEssayRatio(p)}
-                  onChange={(ev) => setPerfEssay(p.id, Number(ev.target.value) || 0)}
-                />
-              </Field>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-t border-line-soft pt-4 text-[13px]">
-            <span className="text-ink-2">
-              지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
-            </span>
-            <span
-              className={
-                essay < school.rules.essay_min
-                  ? 'font-semibold text-red'
-                  : 'font-semibold text-navy'
-              }
-            >
-              합계 {essay.toFixed(0)}% / {school.rules.essay_min}%
-            </span>
-          </div>
-        </Fieldset>
-      )}
-
-      <div className="flex flex-col gap-3 border-t border-line-soft pt-6">
-        <div className="flex items-center gap-4">
-          <button className="btn btn-lg" disabled={!ready} onClick={onDone}>
-            계획서 만들기
+      <Fieldset
+        id="fs-essay"
+        title="서술·논술형 비율"
+        action={
+          <button className="btn btn-sm btn-ghost" onClick={autoEssay}>
+            건너뛰기 (자동)
           </button>
-          {!ready && (
-            <span className="hint">
-              {plan.teachers.length === 0
-                ? '지도교사를 넣으면 수행평가 칸이 열립니다'
-                : '수행평가 이름을 하나는 넣어 주세요'}
-            </span>
-          )}
-          {result.errors.length > 0 && ready && (
-            <span className="text-[13px] text-amber">
-              고칠 곳 {result.errors.length}군데 — 만들고 나서 내려받기 화면에서 알려 드립니다
-            </span>
-          )}
+        }
+        error={firstError('essay')}
+      >
+        {/*
+         * 라벨 길이가 제각각이라 그냥 두면 칸 높이가 어긋난다.
+         * 라벨 자리를 두 줄로 고정하고 글자 크기를 줄여 언제나 같은 높이로 만든다.
+         */}
+        <div className="field-box grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+          {plan.exams.map((e) => (
+            <label key={`x${e.no}`} className="flex flex-col gap-2">
+              <span className="label line-clamp-2 h-8 text-[12px] leading-4">
+                {e.no}회 정기시험 서술형
+              </span>
+              <input
+                className="control text-center"
+                type="number"
+                value={essayPct(e.no)}
+                onChange={(ev) => setEssayPct(e.no, Number(ev.target.value) || 0)}
+              />
+            </label>
+          ))}
+          {plan.performances.map((p) => (
+            <label key={p.id} className="flex flex-col gap-2">
+              <span
+                className="label line-clamp-2 h-8 text-[12px] leading-4"
+                title={p.name || '(이름 없음)'}
+              >
+                {p.name || '(이름 없음)'} ({p.ratio}%)
+              </span>
+              <input
+                className="control text-center"
+                type="number"
+                value={perfEssayRatio(p)}
+                onChange={(ev) => setPerfEssay(p.id, Number(ev.target.value) || 0)}
+              />
+            </label>
+          ))}
         </div>
-        <ColorKey />
+
+        <div className="flex flex-wrap items-baseline gap-x-6 text-[13px]">
+          <span className="text-ink-2">
+            지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
+          </span>
+          <span
+            className={
+              essay < school.rules.essay_min ? 'font-semibold text-red' : 'font-semibold text-navy'
+            }
+          >
+            합계 {essay.toFixed(0)}% / {school.rules.essay_min}%
+          </span>
+        </div>
+      </Fieldset>
+
+      <div className="flex items-center gap-4 border-t border-line-soft pt-6">
+        <button className="btn btn-lg" disabled={!ready} onClick={onDone}>
+          계획서 만들기
+        </button>
+        {!ready && (
+          <span className="text-[13px] text-ink-3">
+            {plan.teachers.length === 0 ? '지도교사' : '수행평가 이름'}을 넣어 주세요
+          </span>
+        )}
+        {result.errors.length > 0 && ready && (
+          <span className="text-[13px] text-amber">고칠 곳 {result.errors.length}군데</span>
+        )}
       </div>
     </Screen>
   )
@@ -622,25 +616,25 @@ function PerfCard({
   const stdText = (c: string) => subject.standards.find((s) => s.code === c)?.text ?? ''
 
   return (
-    <div className="flex flex-col gap-3 rounded-control border border-line-input px-4 py-3.5">
-      {/* 라벨·힌트 높이가 달라지지 않도록 위를 맞추고, 칸마다 힌트를 둔다 */}
+    <div className="field-box flex flex-col gap-3">
+      {/* 라벨 높이를 고정해 칸끼리 어긋나지 않게 한다 */}
       <div className="grid grid-cols-[1.8fr_1fr_0.7fr_auto] items-start gap-3">
-        <Field
-          label="명칭"
-          hint={
-            <span className={over ? 'text-red' : ''}>
-              {nameLen} / {school.rules.perf_name_maxlen}자
+        <label className="flex flex-col gap-2">
+          <span className="label flex h-5 items-center gap-2">
+            명칭
+            <span className={`text-[12px] ${over ? 'text-red' : 'text-ink-4'}`}>
+              {nameLen}/{school.rules.perf_name_maxlen}
             </span>
-          }
-        >
+          </span>
           <input
             className="control"
             value={name}
             placeholder="사회 불평등 실태 조사와 대안 제시"
             onChange={(e) => setName(e.target.value)}
           />
-        </Field>
-        <Field label="실시 시기" hint={`안내는 ${school.rules.notice_lead_weeks}주 전`}>
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="label flex h-5 items-center">실시 시기</span>
           <select
             className="control"
             value={perf.week}
@@ -660,11 +654,13 @@ function PerfCard({
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="비율" hint={`${perf.max_score}점`}>
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="label flex h-5 items-center">비율 (%)</span>
           <input
             className="control text-center"
             type="number"
+            max={school.rules.perf_area_max}
             value={perf.ratio}
             onChange={(e) =>
               upsertPerf({
@@ -676,37 +672,33 @@ function PerfCard({
               })
             }
           />
-        </Field>
+        </label>
         <div className="flex flex-col gap-2">
-          <span className="label opacity-0" aria-hidden>
-            .
-          </span>
+          <span className="label h-5" aria-hidden />
           <button className="btn btn-sm btn-ghost" onClick={() => removePerf(perf.id)}>
             삭제
           </button>
         </div>
       </div>
 
-      <Field
-        label="내용"
-        hint={`평가 방법·루브릭이 여기서 나옵니다 — 지금 방법: ${methodsFromIntent(intent).method}`}
-      >
+      <label className="flex flex-col gap-2">
+        <span className="label flex h-5 items-center gap-2">
+          내용
+          <span className="text-[12px] text-ink-4">{methodsFromIntent(intent).method}</span>
+        </span>
         <textarea
           className="control min-h-[76px]"
           value={intent}
           placeholder="학생들이 자료를 찾아 불평등 실태를 조사하고 정책 대안을 발표하게 하고 싶다"
           onChange={(e) => setIntent(e.target.value)}
         />
-      </Field>
+      </label>
 
       {/* 성취기준 — 안 고르면 진도에 맞춰 자동으로 채운다 */}
       <div className="flex flex-wrap items-center gap-2">
         <button className="btn btn-sm btn-ghost" onClick={() => setPicking(true)}>
-          성취기준 고르기
+          성취기준 {perf.standards_manual ? '고침' : '자동'} · {perf.standard_codes.length}
         </button>
-        <span className="text-[13px] text-ink-3">
-          {perf.standards_manual ? '직접 고름' : '자동'} · {perf.standard_codes.length}개
-        </span>
         {perf.standard_codes.map((c) => (
           <span key={c} className="chip chip-tag" title={stdText(c)}>
             {c}
@@ -716,8 +708,7 @@ function PerfCard({
 
       {picking && (
         <ChipPicker
-          title={`${name || '수행평가'} · 성취기준 고르기`}
-          hint={`나이스 입력 한도에 맞춰 ${school.rules.standards_per_perf_max}개까지 고를 수 있습니다.`}
+          title={`${name || '수행평가'} · 성취기준`}
           max={school.rules.standards_per_perf_max}
           options={subject.standards.map((s) => ({
             value: s.code,
