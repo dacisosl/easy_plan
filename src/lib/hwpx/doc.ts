@@ -379,6 +379,167 @@ export class HwpxDoc {
     this.renumber(tbl)
   }
 
+  /**
+   * 가운데 '항목 열'의 개수를 want에 맞춘다.
+   *
+   * Ⅳ 평가 계획 표는 [구분][평가영역][항목…][비고] 꼴인데, 양식은 항목 열이
+   * '정기시험 2회 + 수행평가 2개' 기준으로 박혀 있다. 실제 항목 수가 다르면
+   * 값이 엉뚱한 열로 밀려 들어가므로(수행평가가 정기시험 머리 아래 앉는다)
+   * 열 자체를 늘리고 줄인다.
+   *
+   * 행마다 앞쪽 고정 칸 수가 다르다(rowSpan으로 없는 행이 있다). 그래서 위치가
+   * 아니라 **오른쪽 끝에서부터** 센다: 마지막 칸이 비고, 그 앞이 항목 열이다.
+   *
+   * @param headCols  왼쪽 고정 열 수 (구분·평가영역 = 2)
+   * @param tailCols  오른쪽 고정 열 수 (비고 = 1)
+   */
+  fitItemCols(tbl: El, headCols: number, tailCols: number, want: number): void {
+    const colOf = (tc: El) => Number(childrenOf(tc, 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
+    const spanOf = (tc: El) =>
+      Number(childrenOf(tc, 'cellSpan')[0]?.getAttribute('colSpan') ?? '1')
+
+    const total = Number(tbl.getAttribute('colCnt') ?? '0')
+    const itemEnd = total - tailCols
+    const have = itemEnd - headCols
+    if (have <= 0 || have === want) return
+
+    for (const tr of this.rows(tbl)) {
+      const cells = childrenOf(tr, 'tc')
+      // 항목 구간에 걸친 칸들. rowSpan에 먹혀 앞 칸이 없는 행도 colAddr로 정확히 걸러진다.
+      const items = cells.filter((tc) => colOf(tc) >= headCols && colOf(tc) < itemEnd)
+      if (items.length === 0) continue
+      const after = cells.find((tc) => colOf(tc) >= itemEnd) ?? null
+
+      if (have < want) {
+        // 모자라면 마지막 항목 칸을 복제해 비고 앞에 끼워 넣는다
+        const proto = items[items.length - 1]
+        for (let k = have; k < want; k++) {
+          const clone = proto.cloneNode(true) as El
+          if (after) tr.insertBefore(clone, after)
+          else tr.appendChild(clone)
+        }
+      } else {
+        /*
+         * 남으면 오른쪽부터 덜어낸다. 가로로 병합된 칸(그룹 머리)은 지우지 않고
+         * 폭만 줄인다 — 지우면 그 행만 열이 모자라 표가 어긋난다.
+         */
+        let drop = have - want
+        for (let i = items.length - 1; i >= 0 && drop > 0; i--) {
+          const tc = items[i]
+          const span = spanOf(tc)
+          if (span > 1) {
+            const cut = Math.min(drop, span - 1)
+            childrenOf(tc, 'cellSpan')[0]?.setAttribute('colSpan', String(span - cut))
+            drop -= cut
+          } else if (items.length > 1) {
+            tr.removeChild(tc)
+            drop -= 1
+          } else break // 마지막 하나는 남긴다
+        }
+      }
+    }
+
+    this.spreadItemWidths(tbl, headCols, headCols + want, total, tailCols)
+    this.renumberCols(tbl, headCols + want + tailCols)
+  }
+
+  /**
+   * 행마다 colAddr를 colSpan 누적으로 다시 매기고 표의 colCnt를 맞춘다.
+   * ★ 열을 건드린 뒤 빠뜨리면 한글에서 표가 깨진다.
+   *
+   * rowSpan에 먹혀 앞 칸이 없는 행이 있으므로 0이 아니라 **그 행 첫 칸의
+   * 원래 자리**에서 세기 시작한다.
+   */
+  renumberCols(tbl: El, colCnt: number): void {
+    for (const tr of this.rows(tbl)) {
+      const cells = childrenOf(tr, 'tc')
+      if (cells.length === 0) continue
+      let at = Number(childrenOf(cells[0], 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
+      for (const tc of cells) {
+        childrenOf(tc, 'cellAddr')[0]?.setAttribute('colAddr', String(at))
+        at += Number(childrenOf(tc, 'cellSpan')[0]?.getAttribute('colSpan') ?? '1')
+      }
+    }
+    tbl.setAttribute('colCnt', String(colCnt))
+  }
+
+  /**
+   * 항목 열을 want개의 홑칸으로 갈아엎는다.
+   *
+   * fitItemCols는 병합된 칸을 살려 두는데, 정기시험이 아예 없어지면 그 병합
+   * (1회 정기시험이 선택형·서술형 두 열을 쓰던 자국)이 그대로 남아 수행평가가
+   * 두 열짜리 칸에 앉는다. 그럴 때는 구간을 통째로 다시 만드는 편이 안전하다.
+   *
+   * 본은 **마지막 항목 칸**을 쓴다 — 거기가 수행평가 칸이라 서식이 맞다.
+   */
+  normalizeItemCols(tbl: El, headCols: number, tailCols: number, want: number): void {
+    const colOf = (tc: El) => Number(childrenOf(tc, 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
+    const total = Number(tbl.getAttribute('colCnt') ?? '0')
+    const itemEnd = total - tailCols
+    if (want < 1 || itemEnd <= headCols) return
+
+    for (const tr of this.rows(tbl)) {
+      const cells = childrenOf(tr, 'tc')
+      const items = cells.filter((tc) => colOf(tc) >= headCols && colOf(tc) < itemEnd)
+      if (items.length === 0) continue
+      /*
+       * 이 행이 몇 번 열에서 시작하는지 먼저 붙잡아 둔다.
+       * rowSpan에 먹혀 앞 칸이 없는 행은 항목 칸을 다 걷어내면 텅 비는데,
+       * 그러면 복제본이 물려받은 옛 주소가 그대로 남아 열이 어긋난다.
+       */
+      const base = colOf(cells[0])
+      const after = cells.find((tc) => colOf(tc) >= itemEnd) ?? null
+      const proto = items[items.length - 1]
+
+      for (const tc of items) tr.removeChild(tc)
+      for (let k = 0; k < want; k++) {
+        const clone = proto.cloneNode(true) as El
+        this.setColSpan(clone, 1)
+        if (after) tr.insertBefore(clone, after)
+        else tr.appendChild(clone)
+      }
+      const head = childrenOf(tr, 'tc')[0]
+      if (head) childrenOf(head, 'cellAddr')[0]?.setAttribute('colAddr', String(base))
+    }
+    this.spreadItemWidths(tbl, headCols, headCols + want, total, tailCols)
+    this.renumberCols(tbl, headCols + want + tailCols)
+  }
+
+  /** 항목 열들의 폭을 고르게 나눈다 — 안 하면 표가 종이를 넘어간다 */
+  private spreadItemWidths(
+    tbl: El,
+    headCols: number,
+    newEnd: number,
+    oldTotal: number,
+    tailCols: number,
+  ): void {
+    const colOf = (tc: El) => Number(childrenOf(tc, 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
+    const oldEnd = oldTotal - tailCols
+    let band = 0
+    for (const tr of this.rows(tbl)) {
+      const cs = childrenOf(tr, 'tc').filter((tc) => colOf(tc) >= headCols && colOf(tc) < oldEnd)
+      const sum = cs.reduce(
+        (s, tc) => s + Number(childrenOf(tc, 'cellSz')[0]?.getAttribute('width') ?? '0'),
+        0,
+      )
+      if (sum > band) band = sum
+    }
+    if (band === 0) return
+    const each = Math.floor(band / Math.max(1, newEnd - headCols))
+    for (const tr of this.rows(tbl)) {
+      for (const tc of childrenOf(tr, 'tc')) {
+        if (colOf(tc) < headCols || colOf(tc) >= oldEnd) continue
+        const span = Number(childrenOf(tc, 'cellSpan')[0]?.getAttribute('colSpan') ?? '1')
+        childrenOf(tc, 'cellSz')[0]?.setAttribute('width', String(each * span))
+      }
+    }
+  }
+
+  /** 한 칸의 가로 병합 폭. 그룹 머리(정기시험·수행평가)를 다시 씌울 때 쓴다. */
+  setColSpan(tc: El, span: number): void {
+    childrenOf(tc, 'cellSpan')[0]?.setAttribute('colSpan', String(Math.max(1, span)))
+  }
+
   /** ★ 빠뜨리면 한글에서 표가 깨진다 */
   renumber(tbl: El): void {
     const trs = this.rows(tbl)

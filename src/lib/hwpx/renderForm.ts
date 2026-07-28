@@ -341,9 +341,63 @@ export async function renderForm(
       })),
     ]
 
-    // 0행 묶음 머리 + 1행 회차·수행평가명
-    doc.fillCellRed(evalTbl, 0, 2, [`${plan.exam_ratio}%`])
-    doc.fillCellRed(evalTbl, 0, 3, [`${plan.perf_ratio}%`])
+    /*
+     * 열 수를 실제 항목 수에 맞춘다.
+     *
+     * 양식은 '정기시험 2회 + 수행평가 2개'로 열이 박혀 있다. 그대로 두면 항목이
+     * 다를 때 값이 엉뚱한 열로 밀려 수행평가가 '정기시험' 머리 아래 앉는다.
+     * 1회 정기시험만 문항 구분(선택형·서술형)까지 쪼개므로 그 회차는 두 열을 쓴다.
+     */
+    const HEAD_COLS = 2 // 구분 · 평가영역
+    const TAIL_COLS = 1 // 비고
+    const examCols =
+      plan.exams.length > 0 ? (plan.exams[0]?.parts.length ?? 1) + (plan.exams.length - 1) : 0
+    const wantCols = examCols + plan.performances.length
+
+    if (wantCols > 0) {
+      if (examCols === 0) {
+        // 시험이 없으면 1회 정기시험이 쓰던 가로 병합까지 걷어내야 한다
+        doc.normalizeItemCols(evalTbl, HEAD_COLS, TAIL_COLS, wantCols)
+      } else {
+        doc.fitItemCols(evalTbl, HEAD_COLS, TAIL_COLS, wantCols)
+      }
+
+      // 0행 묶음 머리 — 남은 항목 열을 정기시험·수행평가가 나눠 덮는다
+      const head = childrenOf(doc.rows(evalTbl)[0], 'tc')
+      const groups = head.filter((tc) => {
+        const at = Number(childrenOf(tc, 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
+        return at >= HEAD_COLS && at < HEAD_COLS + wantCols
+      })
+      const after = head.find((tc) => {
+        const at = Number(childrenOf(tc, 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
+        return at >= HEAD_COLS + wantCols
+      })
+      const want = [
+        ...(examCols > 0
+          ? [{ span: examCols, text: `정기시험(${plan.exam_ratio}%)` }]
+          : []),
+        ...(plan.performances.length > 0
+          ? [{ span: plan.performances.length, text: `수행평가(${plan.perf_ratio}%)` }]
+          : []),
+      ]
+      const proto = groups[0]
+      const row0 = doc.rows(evalTbl)[0]
+      if (proto) {
+        for (const tc of groups) row0.removeChild(tc)
+        for (const g of want) {
+          const clone = proto.cloneNode(true) as Element
+          doc.setColSpan(clone, g.span)
+          if (after) row0.insertBefore(clone, after)
+          else row0.appendChild(clone)
+          // 머리글은 '정기시험(' 은 검정, 비율만 빨강인 구조다 — 통째로 다시 쓴다
+          const para = clone.getElementsByTagName('hp:p')[0]
+          if (para) doc.setPara(para, g.text)
+        }
+        doc.renumberCols(evalTbl, HEAD_COLS + wantCols + TAIL_COLS)
+      }
+      did(`Ⅳ 열 ${wantCols}개 (정기시험 ${examCols} · 수행평가 ${plan.performances.length})`)
+    }
+
     // 회차·수행평가명 행 — 값이 없는 칸은 비운다 (양식의 '수행평가명1' 예시가 남지 않게)
     const titleCells = childrenOf(doc.rows(evalTbl)[1], 'tc')
     titleCells.forEach((_c, k) => doc.setCell(evalTbl, 1, k, cols[k]?.title ?? ''))
