@@ -209,23 +209,54 @@ function PlanForm({
     patchPlan({ teachers: v.split(',').map((t) => t.trim()).filter(Boolean) }),
   )
 
+  /**
+   * 회차별 시험 범위(앵커)를 자동으로 잡는다.
+   *
+   *  - 두 번 보면 1회는 성취기준의 절반쯤에서 끊고, 2회(기말)는 끝까지 간다.
+   *  - 한 번만 보면 그 시험이 학기의 어디쯤에 있는지에 비례해 끊는다.
+   *    (1회 고사만 보는데 끝까지로 잡으면 전 과정이 중간고사 전으로 몰린다.)
+   */
+  const autoAnchors = <T extends { no: number; week: number; anchor_code: string | null }>(
+    exams: T[],
+  ): T[] => {
+    const n = codes.length
+    if (n === 0) return exams
+    const hasFinal = exams.some((e) => e.no === 2)
+    return exams.map((e) => {
+      let idx: number
+      if (e.no === 2) idx = n - 1
+      else if (hasFinal) idx = Math.round(n / 2) - 1
+      else {
+        const upto = teachWeeks.filter((w) => w.no < e.week).length
+        idx = Math.round((n * upto) / Math.max(1, teachWeeks.length)) - 1
+      }
+      return { ...e, anchor_code: codes[Math.max(0, Math.min(n - 1, idx))] ?? null }
+    })
+  }
+
   const setExamCount = (n: 0 | 1 | 2) => {
     const examWeeks = weeks.filter((w) => w.is_exam).map((w) => w.no)
     // 회차가 바뀌면 전체 비율을 회차 수로 다시 나눈다
     const total = n === 0 ? 0 : plan.exam_count > 0 ? plan.exam_ratio : school.rules.exam_ratio
     const each = n > 0 ? Math.round(total / n) : 0
-    const exams = Array.from({ length: n }, (_, i) => ({
-      no: i + 1,
-      week: plan.exams[i]?.week ?? examWeeks[i] ?? examWeeks[examWeeks.length - 1] ?? 1,
-      anchor_code: plan.exams[i]?.anchor_code ?? null,
-      ratio: each,
-      parts: plan.exams[i]?.parts ?? [
-        { kind: '선택형' as const, count: 20, points: 70 },
-        { kind: '서술형' as const, count: 5, points: 30 },
-      ],
-    }))
+    const exams = Array.from({ length: n }, (_, i) => {
+      // 순번이 아니라 회차로 찾는다 — 1회만 보다가 2회로 늘리면 순번이 어긋난다
+      const prev = plan.exams.find((x) => x.no === i + 1)
+      return {
+        no: i + 1,
+        // 시험 주는 학사일정이 정한다 — 옛 값을 물려받으면 회차끼리 같은 주에 겹친다
+        week: examWeeks[i] ?? examWeeks[examWeeks.length - 1] ?? 1,
+        anchor_code: prev?.anchor_code ?? null,
+        ratio: each,
+        parts: prev?.parts ?? [
+          { kind: '선택형' as const, count: 20, points: 70 },
+          { kind: '서술형' as const, count: 5, points: 30 },
+        ],
+      }
+    })
     const sum = each * n
-    patchPlan({ exam_count: n, exams, exam_ratio: sum, perf_ratio: 100 - sum })
+    // 회차가 바뀌면 시험 범위도 다시 잡는다 — 옛 범위를 끌고 가면 진도가 어그러진다
+    patchPlan({ exam_count: n, exams: autoAnchors(exams), exam_ratio: sum, perf_ratio: 100 - sum })
     setTimeout(redistribute, 0)
     setTimeout(rebalancePerfRatios, 0)
   }
@@ -241,7 +272,9 @@ function PlanForm({
     const e = plan.exams[0]
     if (!e) return
     patchPlan({
-      exams: [{ ...e, no: n, week: examWeeks[n - 1] ?? examWeeks[examWeeks.length - 1] ?? e.week }],
+      exams: autoAnchors([
+        { ...e, no: n, week: examWeeks[n - 1] ?? examWeeks[examWeeks.length - 1] ?? e.week },
+      ]),
     })
     setTimeout(redistribute, 0)
   }
@@ -312,16 +345,7 @@ function PlanForm({
   useEffect(() => {
     if (codes.length === 0 || plan.exams.length === 0) return
     if (!plan.exams.every((e) => !e.anchor_code)) return
-    const sorted = [...plan.exams].sort((a, b) => a.week - b.week)
-    let start = 0
-    const next = sorted.map((e) => {
-      const share = Math.floor((codes.length - start) / Math.max(1, sorted.length))
-      const end = Math.min(codes.length - 1, start + Math.max(0, share - 1))
-      const code = codes[end] ?? null
-      start = end + 1
-      return { ...e, anchor_code: code }
-    })
-    patchPlan({ exams: next })
+    patchPlan({ exams: autoAnchors([...plan.exams].sort((a, b) => a.week - b.week)) })
     setTimeout(redistribute, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subject.id, codes.length, plan.exams.length])
