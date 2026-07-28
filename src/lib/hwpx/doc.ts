@@ -469,7 +469,6 @@ export class HwpxDoc {
       }
     }
 
-    this.spreadItemWidths(tbl, headCols, headCols + want, total, tailCols)
     this.renumberCols(tbl, headCols + want + tailCols)
   }
 
@@ -531,37 +530,54 @@ export class HwpxDoc {
       const head = childrenOf(tr, 'tc')[0]
       if (head) childrenOf(head, 'cellAddr')[0]?.setAttribute('colAddr', String(base))
     }
-    this.spreadItemWidths(tbl, headCols, headCols + want, total, tailCols)
     this.renumberCols(tbl, headCols + want + tailCols)
   }
 
-  /** 항목 열들의 폭을 고르게 나눈다 — 안 하면 표가 종이를 넘어간다 */
-  private spreadItemWidths(
-    tbl: El,
-    headCols: number,
-    newEnd: number,
-    oldTotal: number,
-    tailCols: number,
-  ): void {
+  /**
+   * 항목 열들이 쓸 수 있는 가로 폭. 열을 건드리기 **전에** 재 둔다.
+   *
+   * 표 전체 폭은 종이가 정한 것이라 늘리면 안 된다. 그래서 원래 항목들이
+   * 쓰던 폭을 먼저 기억해 두고, 열을 다 고친 뒤 그 안에서 다시 나눈다.
+   */
+  itemBandWidth(tbl: El, headCols: number, tailCols: number): number {
     const colOf = (tc: El) => Number(childrenOf(tc, 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
-    const oldEnd = oldTotal - tailCols
+    const itemEnd = Number(tbl.getAttribute('colCnt') ?? '0') - tailCols
     let band = 0
     for (const tr of this.rows(tbl)) {
-      const cs = childrenOf(tr, 'tc').filter((tc) => colOf(tc) >= headCols && colOf(tc) < oldEnd)
-      const sum = cs.reduce(
-        (s, tc) => s + Number(childrenOf(tc, 'cellSz')[0]?.getAttribute('width') ?? '0'),
-        0,
-      )
+      const sum = childrenOf(tr, 'tc')
+        .filter((tc) => colOf(tc) >= headCols && colOf(tc) < itemEnd)
+        .reduce((s, tc) => s + Number(childrenOf(tc, 'cellSz')[0]?.getAttribute('width') ?? '0'), 0)
       if (sum > band) band = sum
     }
-    if (band === 0) return
-    const each = Math.floor(band / Math.max(1, newEnd - headCols))
+    return band
+  }
+
+  /**
+   * 항목 칸 폭을 band 안에서 병합 폭에 비례하게 다시 나눈다.
+   *
+   * ★ 열·병합을 전부 고친 **뒤 마지막에** 부른다. 중간에 부르면 그 뒤 작업이
+   *   칸을 복제하면서 옛 폭을 물려받아 표가 종이를 넘어간다.
+   */
+  fitItemWidths(tbl: El, headCols: number, tailCols: number, band: number): void {
+    const colOf = (tc: El) => Number(childrenOf(tc, 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
+    const total = Number(tbl.getAttribute('colCnt') ?? '0')
+    const itemEnd = total - tailCols
+    const cols = itemEnd - headCols
+    if (band <= 0 || cols <= 0) return
+
     for (const tr of this.rows(tbl)) {
-      for (const tc of childrenOf(tr, 'tc')) {
-        if (colOf(tc) < headCols || colOf(tc) >= oldEnd) continue
+      const items = childrenOf(tr, 'tc').filter(
+        (tc) => colOf(tc) >= headCols && colOf(tc) < itemEnd,
+      )
+      if (items.length === 0) continue
+      // 마지막 칸이 나머지를 받아 합이 정확히 band가 되게 한다
+      let used = 0
+      items.forEach((tc, i) => {
         const span = Number(childrenOf(tc, 'cellSpan')[0]?.getAttribute('colSpan') ?? '1')
-        childrenOf(tc, 'cellSz')[0]?.setAttribute('width', String(each * span))
-      }
+        const w = i === items.length - 1 ? band - used : Math.round((band * span) / cols)
+        used += w
+        childrenOf(tc, 'cellSz')[0]?.setAttribute('width', String(Math.max(1, w)))
+      })
     }
   }
 

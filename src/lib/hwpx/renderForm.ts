@@ -364,6 +364,9 @@ export async function renderForm(
     const wantCols = examCols + plan.performances.length
 
     if (wantCols > 0) {
+      // 항목들이 쓰던 가로 폭 — 열을 건드리기 전에 재 둔다. 표 전체 폭은 종이가 정한다
+      const band = doc.itemBandWidth(evalTbl, HEAD_COLS, TAIL_COLS)
+
       if (examCols === 0) {
         // 시험이 없으면 1회 정기시험이 쓰던 가로 병합까지 걷어내야 한다
         doc.normalizeItemCols(evalTbl, HEAD_COLS, TAIL_COLS, wantCols)
@@ -435,6 +438,9 @@ export async function renderForm(
         const at = labelAt(label)
         if (at >= 0) doc.setItemSpans(evalTbl, at, HEAD_COLS, TAIL_COLS, spans)
       }
+
+      // ★ 맨 마지막에 폭을 나눈다 — 중간에 하면 뒤 작업이 옛 폭을 물려받아 표가 넘친다
+      doc.fitItemWidths(evalTbl, HEAD_COLS, TAIL_COLS, band)
 
       did(`Ⅳ 열 ${wantCols}개 (정기시험 ${examCols} · 수행평가 ${plan.performances.length})`)
     }
@@ -543,7 +549,14 @@ export async function renderForm(
       const s = doc.paraText(p).trim()
       if (s === '') continue
       if (s.startsWith(':')) {
+        /*
+         * 양식은 '추정/고정' 중 고르라고 형광펜을 칠해 두었다. 글자만 갈면
+         * 형광펜이 남아 노랗게 인쇄된다 — 고른 뒤에는 표시를 걷어야 한다.
+         */
         doc.fillRed(p, [plan.split_score_type === '추정' ? '추정' : '고정'])
+        const base = doc.charPrOf(p)
+        for (const run of doc.redRuns(p)) run.setAttribute('charPrIDRef', base)
+        did(`Ⅴ ${plan.split_score_type}분할점수 (표시 제거)`)
         continue
       }
       const keepNote =
