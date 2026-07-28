@@ -15,8 +15,8 @@
   --color-surface: #ffffff;
   --color-surface-sub: #f8f9fa;
   --color-surface-off: #f1f3f5;
-  /* 입력 칸 바탕 — 흰 바탕에서 '쓰는 자리'를 구분해 주는 아주 옅은 청회색 */
-  --color-field: #f7fafc;
+  /* 입력 칸 묶음 바탕 — 흰 바탕에서 '쓰는 자리'가 분명히 드러나는 옅은 청회색 */
+  --color-field: #e9eff5;
 
   /* 테두리 — 옅게 */
   --color-line: #e8eaed;

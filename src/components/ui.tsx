@@ -56,7 +56,7 @@ export function Fieldset({
     <section
       id={id}
       className={`flex flex-col gap-4 rounded-box border px-6 py-5 ${
-        error ? 'border-red-line bg-red-bg/40' : 'border-line'
+        error ? 'border-red-line bg-red-bg/40' : 'border-line bg-surface-sub'
       }`}
     >
       <div className="flex items-baseline justify-between gap-4">

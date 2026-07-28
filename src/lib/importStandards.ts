@@ -95,14 +95,22 @@ function detectScale(rows: RawRow[]): ScaleType {
   return filledFour || filledFive ? 'LVL_5' : 'LVL_3'
 }
 
+/**
+ * 목록에서 뺄 과목.
+ * '고급 대수 · 고급 물리학'처럼 고급 과목 8개는 이 학교에서 쓰지 않는다.
+ */
+export function isHiddenSubject(name: string): boolean {
+  return name.includes('고급')
+}
+
 /** 워크북 → 과목 이름 목록 */
 export function listSubjects(wb: XLSX.WorkBook): string[] {
   const ws = wb.Sheets[SHEET]
   if (!ws) throw new Error(`시트 '${SHEET}'를 찾을 수 없습니다`)
   const rows = XLSX.utils.sheet_to_json<RawRow>(ws, { defval: '' })
-  return [...new Set(rows.map((r) => col(r, '과목')).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b, 'ko'),
-  )
+  return [...new Set(rows.map((r) => col(r, '과목')).filter(Boolean))]
+    .filter((n) => !isHiddenSubject(n))
+    .sort((a, b) => a.localeCompare(b, 'ko'))
 }
 
 /** 워크북에서 과목 하나를 뽑아 과목 레이어 형태로 만든다 */
