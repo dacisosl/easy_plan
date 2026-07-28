@@ -1,3 +1,12 @@
+/**
+ * hwpx 표 구조 들여다보기 — 양식·참고 파일의 열 배치를 확인할 때 쓴다.
+ *
+ *   npx tsx scripts/dump-tables.ts "경로.hwpx"
+ *
+ * 각 칸을 [c{열주소}×{가로병합}↓{세로병합} "글자"] 로 찍는다.
+ * Ⅳ 평가 계획 표처럼 열이 항목 수에 따라 달라지는 표를 맞출 때 필요하다.
+ */
+
 import { readFileSync } from 'node:fs'
 import { HwpxDoc } from '@/lib/hwpx/doc'
 
