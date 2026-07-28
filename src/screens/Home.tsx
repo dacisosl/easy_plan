@@ -9,13 +9,20 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ColorKey, Field, Fieldset, Screen } from '@/components/ui'
+import { ChipPicker, ColorKey, Field, Fieldset, Screen } from '@/components/ui'
 import { SubjectPicker } from '@/components/SubjectPicker'
 import { usePlanStore } from '@/store/usePlanStore'
-import { essayTotal, monthWeekLabel, orderedStandardCodes, weeksOf } from '@/lib/derive'
+import {
+  essayTotal,
+  monthWeekLabel,
+  orderedStandardCodes,
+  perfEssayRatio,
+  perfEssayTotal,
+  weeksOf,
+} from '@/lib/derive'
 import { methodsFromIntent } from '@/lib/autofill'
 import { validate } from '@/lib/validate'
-import type { FocusTarget } from '@/types'
+import type { FocusTarget, Subject } from '@/types'
 
 /** 입력 즉시 반영하되 타이핑 중에는 재계산을 미룬다 */
 function useDebounced<T>(value: T, apply: (v: T) => void, ms = 300) {
@@ -251,8 +258,33 @@ function PlanForm({
     })
   }
 
+  /** 수행평가 하나의 서술·논술 비율을 직접 정한다 */
+  const setPerfEssay = (perfId: string, pct: number) => {
+    const p = plan.performances.find((x) => x.id === perfId)
+    if (!p) return
+    upsertPerf({
+      id: p.id,
+      name: p.name,
+      intent: p.intent ?? p.activity ?? '',
+      week: p.week,
+      ratio: p.ratio,
+      essayRatio: Math.max(0, Math.min(p.ratio, pct)),
+    })
+  }
+
   /** 건너뛰기 — 서술·논술 하한을 넘기는 가장 단순한 배분 */
   const autoEssay = () => {
+    // 수행평가는 '서술·논술'이 잡힌 영역을 전부 인정하는 기본값으로 되돌린다
+    for (const p of plan.performances) {
+      upsertPerf({
+        id: p.id,
+        name: p.name,
+        intent: p.intent ?? p.activity ?? '',
+        week: p.week,
+        ratio: p.ratio,
+        essayRatio: null,
+      })
+    }
     const perfEssay = plan.performances
       .filter((p) => p.method_checks.includes('서술·논술'))
       .reduce((s, p) => s + p.ratio, 0)
@@ -265,6 +297,16 @@ function PlanForm({
   const essay = essayTotal(plan, plan.exam_ratio)
   const perfSum = plan.performances.reduce((s, p) => s + p.ratio, 0)
   const ready = plan.teachers.length > 0 && plan.performances.some((p) => p.name.trim())
+
+  /*
+   * 구획은 앞 구획이 채워지면 하나씩 떠오른다 — 한 화면에 다 쏟지 않는다.
+   *   기본 → (과목 확정) 정기시험·비율 → (시험 설정) 시험 범위·수행평가 → (수행평가 입력) 서논술형
+   */
+  const showExam = subject.name.trim().length > 0
+  const showAnchor = showExam && plan.exam_count > 0
+  // 지도교사까지 넣으면 기본이 끝난 것으로 본다
+  const showPerf = showExam && plan.teachers.length > 0
+  const showEssay = showPerf && plan.performances.some((p) => p.name.trim())
 
   return (
     <Screen
@@ -333,17 +375,20 @@ function PlanForm({
       </Fieldset>
 
       {/* ② 정기시험 · 비율 */}
-      <Fieldset
-        id="fs-exam"
-        title="정기시험과 반영 비율"
-        hint={`${weeks.filter((w) => w.is_exam).map((w) => `${w.no}주`).join(' · ') || '시험 주 없음'}`}
-        action={
-          <button className="btn btn-sm btn-ghost" onClick={() => setExamCount(0)}>
-            수행 100%
-          </button>
-        }
-        error={firstError('exam')}
-      >
+      {showExam && (
+        <Fieldset
+          key="exam"
+          step={1}
+          id="fs-exam"
+          title="정기시험과 반영 비율"
+          hint={`${weeks.filter((w) => w.is_exam).map((w) => `${w.no}주`).join(' · ') || '시험 주 없음'}`}
+          action={
+            <button className="btn btn-sm btn-ghost" onClick={() => setExamCount(0)}>
+              수행 100%
+            </button>
+          }
+          error={firstError('exam')}
+        >
         <div className="grid grid-cols-[1fr_1fr_1fr_1.2fr] items-end gap-3">
           <Field label="정기시험 횟수">
             <select
@@ -381,12 +426,15 @@ function PlanForm({
               <span className="text-amber"> · {plan.perf_ratio - perfSum}% 남음</span>
             )}
           </div>
-        </div>
-      </Fieldset>
+          </div>
+        </Fieldset>
+      )}
 
       {/* ③ 시험 범위 (앵커) */}
-      {plan.exam_count > 0 && (
+      {showAnchor && (
         <Fieldset
+          key="anchor"
+          step={2}
           id="fs-anchor"
           title="시험 범위"
           hint="회차별로 어디까지 나가는지 — 진도 배분의 기준입니다"
@@ -423,79 +471,114 @@ function PlanForm({
       )}
 
       {/* ④ 수행평가 */}
-      <Fieldset
-        id="fs-perf"
-        title="수행평가"
-        hint="명칭 · 실시 시기 · 내용만 — 루브릭은 한글에서 다듬습니다"
-        action={
-          <button className="btn btn-sm btn-ghost" onClick={autoPerfs}>
-            건너뛰기 (자동)
-          </button>
-        }
-        error={firstError('perf')}
-      >
-        {plan.performances.length === 0 && (
-          <p className="text-sm text-ink-2">아직 없습니다. 아래에서 추가하거나 자동으로 채우세요.</p>
-        )}
-        {plan.performances.map((p) => (
-          <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} />
-        ))}
-        <div className="flex items-center gap-4">
-          <button className="btn btn-sm btn-ghost" onClick={addPerf}>
-            + 수행평가 추가
-          </button>
-          <span className="hint">
-            비율·배점·성취기준·루브릭 뼈대는 코드가 계산합니다
-          </span>
-        </div>
-      </Fieldset>
+      {showPerf && (
+        <Fieldset
+          key="perf"
+          step={3}
+          id="fs-perf"
+          title="수행평가"
+          hint="명칭 · 실시 시기 · 내용만 — 루브릭은 한글에서 다듬습니다"
+          action={
+            <button className="btn btn-sm btn-ghost" onClick={autoPerfs}>
+              건너뛰기 (자동)
+            </button>
+          }
+          error={firstError('perf')}
+        >
+          {plan.performances.length === 0 && (
+            <p className="text-sm text-ink-2">
+              아직 없습니다. 아래에서 추가하거나 자동으로 채우세요.
+            </p>
+          )}
+          {plan.performances.map((p) => (
+            <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
+          ))}
+          <div className="flex items-center gap-4">
+            <button className="btn btn-sm btn-ghost" onClick={addPerf}>
+              + 수행평가 추가
+            </button>
+            <span className="hint">비율·배점·루브릭 뼈대는 코드가 계산합니다</span>
+          </div>
+        </Fieldset>
+      )}
 
       {/* ⑤ 서술·논술형 */}
-      <Fieldset
-        id="fs-essay"
-        title="서술·논술형 비율"
-        hint={`합계 ${school.rules.essay_min}% 이상이어야 합니다`}
-        action={
-          <button className="btn btn-sm btn-ghost" onClick={autoEssay}>
-            건너뛰기 (자동)
-          </button>
-        }
-        error={firstError('essay')}
-      >
-        <div className="flex flex-wrap items-end gap-4">
-          {plan.exams.map((e) => (
-            <Field key={e.no} label={`${e.no}회 정기시험 서술형 (%)`} className="w-40">
-              <input
-                className="control text-center"
-                type="number"
-                value={essayPct(e.no)}
-                onChange={(ev) => setEssayPct(e.no, Number(ev.target.value) || 0)}
-              />
-            </Field>
-          ))}
-          <div className="flex flex-col gap-1 pb-2 text-[13px]">
+      {showEssay && (
+        <Fieldset
+          key="essay"
+          step={4}
+          id="fs-essay"
+          title="서술·논술형 비율"
+          hint={`합계 ${school.rules.essay_min}% 이상이어야 합니다`}
+          action={
+            <button className="btn btn-sm btn-ghost" onClick={autoEssay}>
+              건너뛰기 (자동)
+            </button>
+          }
+          error={firstError('essay')}
+        >
+          <div className="flex flex-wrap items-start gap-4">
+            {plan.exams.map((e) => (
+              <Field
+                key={e.no}
+                label={`${e.no}회 정기시험 서술형`}
+                hint="시험 만점 대비 %"
+                className="w-44"
+              >
+                <input
+                  className="control text-center"
+                  type="number"
+                  value={essayPct(e.no)}
+                  onChange={(ev) => setEssayPct(e.no, Number(ev.target.value) || 0)}
+                />
+              </Field>
+            ))}
+            {plan.performances.map((p) => (
+              <Field
+                key={p.id}
+                label={`${p.name || '(이름 없음)'} 서논술`}
+                hint={`이 영역 ${p.ratio}% 중`}
+                className="w-44"
+              >
+                <input
+                  className="control text-center"
+                  type="number"
+                  value={perfEssayRatio(p)}
+                  onChange={(ev) => setPerfEssay(p.id, Number(ev.target.value) || 0)}
+                />
+              </Field>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-t border-line-soft pt-4 text-[13px]">
             <span className="text-ink-2">
-              수행 논술형{' '}
-              {plan.performances
-                .filter((p) => p.method_checks.includes('서술·논술'))
-                .reduce((s, p) => s + p.ratio, 0)}
-              %
+              지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
             </span>
             <span
-              className={essay < school.rules.essay_min ? 'font-semibold text-red' : 'font-semibold text-navy'}
+              className={
+                essay < school.rules.essay_min
+                  ? 'font-semibold text-red'
+                  : 'font-semibold text-navy'
+              }
             >
               합계 {essay.toFixed(0)}% / {school.rules.essay_min}%
             </span>
           </div>
-        </div>
-      </Fieldset>
+        </Fieldset>
+      )}
 
       <div className="flex flex-col gap-3 border-t border-line-soft pt-6">
         <div className="flex items-center gap-4">
           <button className="btn btn-lg" disabled={!ready} onClick={onDone}>
             계획서 만들기
           </button>
-          {!ready && <span className="hint">지도교사와 수행평가 하나는 있어야 합니다</span>}
+          {!ready && (
+            <span className="hint">
+              {plan.teachers.length === 0
+                ? '지도교사를 넣으면 수행평가 칸이 열립니다'
+                : '수행평가 이름을 하나는 넣어 주세요'}
+            </span>
+          )}
           {result.errors.length > 0 && ready && (
             <span className="text-[13px] text-amber">
               고칠 곳 {result.errors.length}군데 — 만들고 나서 내려받기 화면에서 알려 드립니다
@@ -513,9 +596,11 @@ function PlanForm({
 function PerfCard({
   perfId,
   weeks,
+  subject,
 }: {
   perfId: string
   weeks: { no: number }[]
+  subject: Subject
 }) {
   const { school, upsertPerf, removePerf } = usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))!
@@ -523,16 +608,23 @@ function PerfCard({
 
   const [name, setName] = useState(perf.name)
   const [intent, setIntent] = useState(perf.intent ?? perf.activity ?? '')
+  const [picking, setPicking] = useState(false)
 
-  useDebounced(name, (v) => upsertPerf({ id: perf.id, name: v, intent, week: perf.week, ratio: perf.ratio }))
-  useDebounced(intent, (v) => upsertPerf({ id: perf.id, name, intent: v, week: perf.week, ratio: perf.ratio }))
+  useDebounced(name, (v) =>
+    upsertPerf({ id: perf.id, name: v, intent, week: perf.week, ratio: perf.ratio }),
+  )
+  useDebounced(intent, (v) =>
+    upsertPerf({ id: perf.id, name, intent: v, week: perf.week, ratio: perf.ratio }),
+  )
 
   const nameLen = [...name].length
   const over = nameLen > school.rules.perf_name_maxlen
+  const stdText = (c: string) => subject.standards.find((s) => s.code === c)?.text ?? ''
 
   return (
     <div className="flex flex-col gap-3 rounded-control border border-line-input px-4 py-3.5">
-      <div className="grid grid-cols-[1.8fr_1fr_0.7fr_auto] items-end gap-3">
+      {/* 라벨·힌트 높이가 달라지지 않도록 위를 맞추고, 칸마다 힌트를 둔다 */}
+      <div className="grid grid-cols-[1.8fr_1fr_0.7fr_auto] items-start gap-3">
         <Field
           label="명칭"
           hint={
@@ -548,7 +640,7 @@ function PerfCard({
             onChange={(e) => setName(e.target.value)}
           />
         </Field>
-        <Field label="실시 시기">
+        <Field label="실시 시기" hint={`안내는 ${school.rules.notice_lead_weeks}주 전`}>
           <select
             className="control"
             value={perf.week}
@@ -569,7 +661,7 @@ function PerfCard({
             ))}
           </select>
         </Field>
-        <Field label="비율 (%)">
+        <Field label="비율" hint={`${perf.max_score}점`}>
           <input
             className="control text-center"
             type="number"
@@ -585,13 +677,19 @@ function PerfCard({
             }
           />
         </Field>
-        <button className="btn btn-sm btn-ghost mb-0.5" onClick={() => removePerf(perf.id)}>
-          삭제
-        </button>
+        <div className="flex flex-col gap-2">
+          <span className="label opacity-0" aria-hidden>
+            .
+          </span>
+          <button className="btn btn-sm btn-ghost" onClick={() => removePerf(perf.id)}>
+            삭제
+          </button>
+        </div>
       </div>
+
       <Field
         label="내용"
-        hint={`평가 방법·성취기준·루브릭이 여기서 나옵니다 — 지금 방법: ${methodsFromIntent(intent).method}`}
+        hint={`평가 방법·루브릭이 여기서 나옵니다 — 지금 방법: ${methodsFromIntent(intent).method}`}
       >
         <textarea
           className="control min-h-[76px]"
@@ -600,6 +698,47 @@ function PerfCard({
           onChange={(e) => setIntent(e.target.value)}
         />
       </Field>
+
+      {/* 성취기준 — 안 고르면 진도에 맞춰 자동으로 채운다 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn btn-sm btn-ghost" onClick={() => setPicking(true)}>
+          성취기준 고르기
+        </button>
+        <span className="text-[13px] text-ink-3">
+          {perf.standards_manual ? '직접 고름' : '자동'} · {perf.standard_codes.length}개
+        </span>
+        {perf.standard_codes.map((c) => (
+          <span key={c} className="chip chip-tag" title={stdText(c)}>
+            {c}
+          </span>
+        ))}
+      </div>
+
+      {picking && (
+        <ChipPicker
+          title={`${name || '수행평가'} · 성취기준 고르기`}
+          hint={`나이스 입력 한도에 맞춰 ${school.rules.standards_per_perf_max}개까지 고를 수 있습니다.`}
+          max={school.rules.standards_per_perf_max}
+          options={subject.standards.map((s) => ({
+            value: s.code,
+            label: s.code,
+            sub: s.text.slice(0, 34),
+          }))}
+          selected={perf.standards_manual ? perf.standard_codes : []}
+          onClose={() => setPicking(false)}
+          onSave={(codes) => {
+            upsertPerf({
+              id: perf.id,
+              name,
+              intent,
+              week: perf.week,
+              ratio: perf.ratio,
+              standardCodes: codes.length > 0 ? codes : null,
+            })
+            setPicking(false)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -199,8 +199,18 @@ export async function renderForm(
       doc.setCell(progress, r, 2, w.is_exam ? '' : [areaLine, unitLine].filter(Boolean))
       doc.setCell(progress, r, 3, w.is_exam ? '' : stdLines.length ? stdLines : '')
       doc.setCell(progress, r, 4, lines.length ? lines : '', { red: !w.is_exam && !!ai })
-      // 예정시간 / 실시누계 — 배포표가 있으면 그 값, 없으면 수업일수로 계산 (빨강 = 검토 대상)
-      doc.setCell(progress, r, 5, h ? [String(h.planned), String(h.cumulative)] : '', { red: true })
+      /*
+       * 예정시간 / 실시누계 — 배포표가 있으면 그 값, 없으면 수업일수로 계산.
+       * 머리 칸이 `예정시간` · 빈 줄 · `실시누계` 세 문단이라 데이터도 같은 모양으로
+       * 맞춘다. 위아래로도 한 줄씩 띄워 숫자가 칸 가운데에 오게 한다.
+       */
+      doc.setCell(
+        progress,
+        r,
+        5,
+        h ? ['', String(h.planned), '', String(h.cumulative), ''] : '',
+        { red: true },
+      )
       doc.setCell(progress, r, 6, w.events.join(', ') || '-')
     })
     did(`진도표 ${weeks.length}주 (1행/주로 정규화)`)

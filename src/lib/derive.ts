@@ -360,10 +360,21 @@ export function essayTotal(plan: SemesterPlan, examRatio: number): number {
     const essay = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
     return sum + (total > 0 ? (essay / total) * (examRatio / Math.max(1, plan.exam_count)) : 0)
   }, 0)
-  const perf = plan.performances
-    .filter((p) => p.method_checks.includes('서술·논술'))
-    .reduce((s, p) => s + p.ratio, 0)
-  return written + perf
+  return written + perfEssayTotal(plan)
+}
+
+/**
+ * 수행평가 쪽 서술·논술 비율 합계.
+ * 교사가 직접 정한 값(essay_ratio)이 있으면 그것을 쓰고,
+ * 없으면 평가 방법에 '서술·논술'이 있는 영역의 반영 비율 전부로 본다.
+ */
+export function perfEssayRatio(perf: Performance): number {
+  if (perf.essay_ratio != null) return Math.max(0, Math.min(perf.ratio, perf.essay_ratio))
+  return perf.method_checks.includes('서술·논술') ? perf.ratio : 0
+}
+
+export function perfEssayTotal(plan: SemesterPlan): number {
+  return plan.performances.reduce((s, p) => s + perfEssayRatio(p), 0)
 }
 
 /** 루브릭 배점 합 — 요소별 최고 배점의 합 */

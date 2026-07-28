@@ -180,6 +180,10 @@ export function buildPerformance(args: {
   week: number
   school: SchoolLayer
   distribution: SemesterPlan['distribution']
+  /** 교사가 직접 고른 성취기준 — 주면 자동 선정을 하지 않는다 */
+  standardCodes?: string[] | null
+  /** 교사가 직접 정한 서술·논술 비율 */
+  essayRatio?: number | null
 }): Performance {
   const { id, name, intent, ratio, week, school, distribution } = args
   const { checks, method } = methodsFromIntent(intent)
@@ -189,7 +193,8 @@ export function buildPerformance(args: {
     .filter(([wk]) => Number(wk) <= week)
     .sort((a, b) => Number(a[0]) - Number(b[0]))
     .flatMap(([, codes]) => codes)
-  const codes = [...new Set(taught)].slice(-Math.min(3, school.rules.standards_per_perf_max))
+  const auto = [...new Set(taught)].slice(-Math.min(3, school.rules.standards_per_perf_max))
+  const manual = args.standardCodes && args.standardCodes.length > 0
 
   return {
     id,
@@ -200,7 +205,9 @@ export function buildPerformance(args: {
     // 규칙 4·5 — 만점의 20% 이상 40% 미만, 1점 초과. 프롬프트가 정한 기본은 30%.
     base_score: Math.max(2, Math.round(ratio * 0.3)),
     week,
-    standard_codes: codes,
+    standard_codes: manual ? args.standardCodes!.slice(0, school.rules.standards_per_perf_max) : auto,
+    standards_manual: manual || undefined,
+    essay_ratio: args.essayRatio ?? undefined,
     method_checks: checks,
     activity: intent,
     rubric: rubricFromChecks(checks, ratio), // 규칙 7 — 합이 만점과 같다

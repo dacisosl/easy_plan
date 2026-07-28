@@ -73,6 +73,10 @@ interface Actions {
     intent: string
     week: number
     ratio?: number
+    /** 교사가 직접 고른 성취기준 (없으면 기존 선택 유지, 그것도 없으면 자동) */
+    standardCodes?: string[] | null
+    /** 교사가 직접 정한 서술·논술 비율 */
+    essayRatio?: number | null
   }) => void
   patchPerf: (id: string, patch: Partial<Performance>) => void
   removePerf: (id: string) => void
@@ -308,10 +312,21 @@ export const usePlanStore = create<State & Actions>()(
         const school = get().school
         if (!plan || !subject) return
 
+        const prev = plan.performances.find((p) => p.id === input.id)
         const others = plan.performances.filter((p) => p.id !== input.id)
         // 비율을 정하지 않으면 남은 몫을 준다
         const usedRatio = others.reduce((s, p) => s + p.ratio, 0)
         const ratio = input.ratio ?? Math.max(0, plan.perf_ratio - usedRatio)
+
+        // 교사가 직접 고른 값은 다시 계산하지 않고 이어 간다
+        const standardCodes =
+          input.standardCodes !== undefined
+            ? input.standardCodes
+            : prev?.standards_manual
+              ? prev.standard_codes
+              : null
+        const essayRatio =
+          input.essayRatio !== undefined ? input.essayRatio : (prev?.essay_ratio ?? null)
 
         const built = buildPerformance({
           id: input.id ?? `perf-${uid()}`,
@@ -321,6 +336,8 @@ export const usePlanStore = create<State & Actions>()(
           week: input.week,
           school,
           distribution: plan.distribution,
+          standardCodes,
+          essayRatio,
         })
 
         const exists = plan.performances.some((p) => p.id === built.id)

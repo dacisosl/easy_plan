@@ -276,6 +276,16 @@ export interface Performance {
   week: number
   /** 성취기준 (6개 이하) */
   standard_codes: string[]
+  /**
+   * 교사가 성취기준을 직접 고른 경우. 참이면 진도에서 자동으로 다시 뽑지 않는다.
+   * (고르지 않으면 그 주까지의 진도에서 자동으로 채운다)
+   */
+  standards_manual?: boolean
+  /**
+   * 이 수행평가에서 서술·논술형이 차지하는 비율(%).
+   * 정하지 않으면 평가 방법에 '서술·논술'이 있을 때 반영 비율 전부로 본다.
+   */
+  essay_ratio?: number
   method_checks: PerfMethodCheck[]
   /** 수행 활동 과정 */
   activity: string
