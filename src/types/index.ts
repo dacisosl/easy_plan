@@ -100,8 +100,9 @@ export type SentenceCondition =
   /** subject.type == pass_fail → Ⅲ-1-나 제거, P/F 문구 추가 */
   | 'type != pass_fail'
   | 'type == pass_fail'
-  /** split_score_type == 고정 → Ⅲ-2-나 제거 */
+  /** 분할점수 방식에 따라 Ⅲ-2-나 문장이 갈린다 */
   | 'split_score_type == 추정'
+  | 'split_score_type == 고정'
   /** subject.is_common == false → Ⅺ 최소성취수준 셀 제거 */
   | 'is_common'
 

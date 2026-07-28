@@ -50,24 +50,20 @@ export function inputHash(plan: SemesterPlan, subject: Subject): string {
 /* ── 결정적 fallback ─────────────────────────── */
 
 export function fallbackSections(
-  plan: SemesterPlan,
+  _plan: SemesterPlan,
   subject: Subject,
   school: SchoolLayer,
 ): AiDraft['sections'] {
   void school
   const split = (s: string) => s.split(/\n+/).map((x) => x.trim()).filter(Boolean)
   const n = subject.name
-  const teachers = Math.max(1, plan.teachers.length)
   const plan1 = split(subject.teaching_plan)
-  const I =
-    plan1.length > 0
-      ? plan1
-      : [
-          `${n}의 핵심 아이디어를 중심으로 단원을 구성하고, 자료 탐구 · 토의 · 정리 순으로 지도한다.`,
-        ]
   return {
-    // 지도교사 수만큼 칸이 나뉜다 — 모자라면 같은 계획을 반복한다
-    I: Array.from({ length: teachers }, (_, i) => I[i] ?? I[0]),
+    // 교사 수와 무관하게 한 덩어리 — 진도와 평가 기준은 어차피 같다
+    I: [
+      plan1.join(' ') ||
+        `${n}의 핵심 아이디어를 중심으로 단원을 구성하고, 자료 탐구 · 토의 · 정리 순으로 지도한다.`,
+    ],
     II:
       split(subject.objectives).slice(0, 3).length > 0
         ? split(subject.objectives).slice(0, 3)
@@ -224,7 +220,7 @@ export function sectionsPrompt(plan: SemesterPlan, subject: Subject): {
       `과목: ${subject.name} (${plan.grade}학년, ${plan.credit}학점) · 지도교사 ${Math.max(1, plan.teachers.length)}인`,
       `영역: ${subject.areas.map((a) => a.name).join(', ') || '(없음)'}`,
       '',
-      `I = 교수학습 운영계획. 지도교사 수(${Math.max(1, plan.teachers.length)})만큼 배열. 각 2~3문장. 표가 교사 수만큼 가로로 나뉜다.`,
+      'I = 교수학습 운영계획. 배열 원소 하나. 3~4문장. 지도교사가 여럿이어도 같은 진도·같은 평가 기준을 쓰므로 나누지 않는다.',
       'II = 평가의 목적 가·나·다에 해당하는 3문장. 과목 목표에서 나오는 내용. 각 문장은 "~ 능력을 기르도록 한다." 로 끝난다.',
       'III1 = 평가의 기본 방향 가·다·라에 해당하는 3문장. 순서대로',
       `  1) "${subject.name} 교과 내용 요소에 대한 단순한 지식 습득 여부보다는 …" 로 시작하는 문장`,

@@ -548,7 +548,7 @@ export interface SentenceContext {
 }
 
 export function sentenceApplies(s: Sentence, ctx: SentenceContext): boolean {
-  const { subject, plan, school } = ctx
+  const { subject, plan } = ctx
   switch (s.condition) {
     case 'always':
       return true
@@ -557,7 +557,8 @@ export function sentenceApplies(s: Sentence, ctx: SentenceContext): boolean {
     case 'exam_count > 0':
       return plan.exam_count > 0
     case 'credit > 1 && perf_ratio < 80':
-      return plan.credit > 1 && school.rules.perf_ratio < 80
+      // 비율은 계획서 값을 본다 — 학교 기본값이 아니다
+      return plan.credit > 1 && plan.perf_ratio < 80
     case 'has_rank':
       return ctx.hasRank
     case 'type != pass_fail':
@@ -566,6 +567,8 @@ export function sentenceApplies(s: Sentence, ctx: SentenceContext): boolean {
       return subject.type === 'pass_fail'
     case 'split_score_type == 추정':
       return plan.split_score_type === '추정'
+    case 'split_score_type == 고정':
+      return plan.split_score_type === '고정'
     case 'is_common':
       return subject.is_common
     default:
@@ -581,8 +584,19 @@ export function fillSlots(text: string, ctx: SentenceContext): string {
     if (key === '학점') return `${ctx.plan.credit}학점`
     if (key === '지도교사') return ctx.plan.teachers.join(', ')
     if (key === '지침명') return ctx.school.rules.guideline_name
-    if (key === '정기시험비율') return `${ctx.school.rules.exam_ratio}%`
-    if (key === '수행평가비율') return `${ctx.school.rules.perf_ratio}%`
+    // 비율은 계획서마다 다르다 — 학교 기본값(school.rules)은 새 계획서의 출발점일 뿐이다
+    if (key === '정기시험비율') return `${ctx.plan.exam_ratio}%`
+    if (key === '수행평가비율') return `${ctx.plan.perf_ratio}%`
+    /*
+     * 성적 산출 방식 한 구절.
+     * 시험이 없으면 "정기시험 0%와 수행평가 100%를 합산"이 어색하므로 갈래를 나눈다.
+     */
+    if (key === '성적산출') {
+      return ctx.plan.exam_count > 0
+        ? `정기시험 ${ctx.plan.exam_ratio}%와 수행평가 ${ctx.plan.perf_ratio}%의 합산`
+        : '수행평가 100%'
+    }
+    if (key === '분할점수방식') return ctx.plan.split_score_type
     if (key === '동점자순서') return tiebreakOrder(ctx.plan).join(' → ')
     const perfMatch = key.match(/^수행평가명(\d+)$/)
     if (perfMatch) {

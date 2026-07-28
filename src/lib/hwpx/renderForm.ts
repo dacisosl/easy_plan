@@ -217,20 +217,21 @@ export async function renderForm(
     did(`진도표 ${weeks.length}주 (1행/주로 정규화)`)
   }
 
-  /* ── Ⅰ 교수학습 운영계획 — 교사 수만큼 가로 분할 ── */
+  /* ── Ⅰ 교수학습 운영계획 ── */
   {
     const t = sectionTable('Ⅰ')
     const lines = ai?.sections.I ?? []
     if (!t) warn('Ⅰ 구역을 찾지 못했습니다')
     else if (lines.length === 0) warn('Ⅰ 교수학습 운영계획 문안이 없습니다')
     else {
-      // 머리 표(Ⅰ | 교수학습 운영계획) 오른쪽 칸을 교사 수만큼 세로로 나눠 적는다.
-      // 양식 메모: "교사의 수 만큼 가로로 분할하여 작성"
-      const names = plan.teachers.length > 0 ? plan.teachers : ['(지도교사)']
-      const body = names.map((n, i) => `[${n}] ${lines[i] ?? lines[0]}`)
+      /*
+       * 양식 메모는 "교사의 수 만큼 가로로 분할하여 작성"이라고 하지만,
+       * 지도교사가 여럿이어도 진도와 평가 기준은 같으므로 한 덩어리로 쓴다.
+       * 교사별로 나눠 쓰면 같은 말을 이름만 바꿔 되풀이하게 된다.
+       */
       const note = between('Ⅰ', 'Ⅱ').find((p) => doc.paraText(p).trim().startsWith('※'))
-      doc.replaceParaRun(paraOf(t)!, note ?? null, body, { red: true })
-      did(`Ⅰ 교수학습 운영계획 ${body.length}명분 (빨강)`)
+      doc.replaceParaRun(paraOf(t)!, note ?? null, [lines[0]], { red: true })
+      did('Ⅰ 교수학습 운영계획 (빨강)')
     }
   }
 

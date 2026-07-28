@@ -24,7 +24,7 @@ import {
 } from '@/lib/derive'
 import { methodsFromIntent, splitPerfRatios } from '@/lib/autofill'
 import { validate } from '@/lib/validate'
-import type { FocusTarget, Subject } from '@/types'
+import type { FocusTarget, SemesterPlan, Subject } from '@/types'
 
 /** 입력 즉시 반영하되 타이핑 중에는 재계산을 미룬다 */
 function useDebounced<T>(value: T, apply: (v: T) => void, ms = 300) {
@@ -439,7 +439,7 @@ function PlanForm({
         error={firstError('basic')}
       >
         {pickError && <span className="text-[13px] text-red">{pickError}</span>}
-        <div className="field-box grid grid-cols-[0.8fr_1fr_1.6fr_0.8fr] gap-3">
+        <div className="field-box grid grid-cols-[0.7fr_0.8fr_1.5fr_0.7fr_1fr] gap-3">
           <Field label="학년">
             <select
               className="control"
@@ -488,6 +488,19 @@ function PlanForm({
                   {c.semester}학기
                 </option>
               ))}
+            </select>
+          </Field>
+          {/* 성취도 A~E를 가르는 점수를 어떻게 정하는지 — Ⅲ-1·Ⅲ-2 문구가 여기서 갈린다 */}
+          <Field label="분할점수">
+            <select
+              className="control"
+              value={plan.split_score_type}
+              onChange={(e) =>
+                patchPlan({ split_score_type: e.target.value as SemesterPlan['split_score_type'] })
+              }
+            >
+              <option value="추정">추정분할</option>
+              <option value="고정">고정분할</option>
             </select>
           </Field>
         </div>

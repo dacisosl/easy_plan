@@ -123,7 +123,7 @@ export const SENTENCES: Sentence[] = [
     section: 'Ⅲ-1',
     order: 20,
     condition: 'type != pass_fail',
-    text: '학기말 성취도는 정기시험 {정기시험비율}와 수행평가 {수행평가비율}를 합산하여 산출한다.',
+    text: '학기말 성취도는 {성적산출}로 산출하며, 성취도 분할점수는 {분할점수방식}분할 방식으로 정한다.',
   },
   {
     id: '3-1-b-pf',
@@ -153,7 +153,14 @@ export const SENTENCES: Sentence[] = [
     section: 'Ⅲ-2',
     order: 20,
     condition: 'split_score_type == 추정',
-    text: '성취도 분할점수는 과거 성적 분포를 반영한 추정 방식으로 산출한다.',
+    text: '성취도 분할점수는 과거 성적 분포를 반영한 추정 방식으로 산출하며, 학업성적관리위원회의 심의로 확정한다.',
+  },
+  {
+    id: '3-2-b-fixed',
+    section: 'Ⅲ-2',
+    order: 20,
+    condition: 'split_score_type == 고정',
+    text: '성취도 분할점수는 90점·80점·70점·60점의 고정 분할 방식으로 산출한다.',
   },
   {
     id: '3-2-c',
