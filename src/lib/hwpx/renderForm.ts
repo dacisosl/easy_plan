@@ -217,23 +217,13 @@ export async function renderForm(
     did(`진도표 ${weeks.length}주 (1행/주로 정규화)`)
   }
 
-  /* ── Ⅰ 교수학습 운영계획 ── */
-  {
-    const t = sectionTable('Ⅰ')
-    const lines = ai?.sections.I ?? []
-    if (!t) warn('Ⅰ 구역을 찾지 못했습니다')
-    else if (lines.length === 0) warn('Ⅰ 교수학습 운영계획 문안이 없습니다')
-    else {
-      /*
-       * 양식 메모는 "교사의 수 만큼 가로로 분할하여 작성"이라고 하지만,
-       * 지도교사가 여럿이어도 진도와 평가 기준은 같으므로 한 덩어리로 쓴다.
-       * 교사별로 나눠 쓰면 같은 말을 이름만 바꿔 되풀이하게 된다.
-       */
-      const note = between('Ⅰ', 'Ⅱ').find((p) => doc.paraText(p).trim().startsWith('※'))
-      doc.replaceParaRun(paraOf(t)!, note ?? null, [lines[0]], { red: true })
-      did('Ⅰ 교수학습 운영계획 (빨강)')
-    }
-  }
+  /*
+   * Ⅰ 교수학습 운영계획은 글을 쓰지 않는다.
+   *
+   * 양식에도 실물 계획서(1·2·3학년 전부)에도 이 구역은 진도표 하나로 끝나고
+   * 뒤에 '※ 단, 학사일정 …' 단서만 붙는다. 서술을 넣을 자리가 없다.
+   * 진도표는 위에서 이미 채웠다.
+   */
 
   /**
    * "가. 본문" 꼴 항목 문단을 갈아끼운다.
@@ -264,14 +254,29 @@ export async function renderForm(
     else warn('Ⅱ 평가의 목적에서 바꿀 빨간 스팬을 찾지 못했습니다')
   }
 
-  /* ── Ⅲ-1 평가의 기본 방향 — 가·다·라만 교체 ── */
+  /* ── Ⅲ-1 평가의 기본 방향 — 가·다·라는 AI, 나는 계산값 ── */
   {
     const scope = splitIII().one
     const lines = ai?.sections.III1 ?? []
     const n = ['가. ', '다. ', '라. '].filter((h, i) =>
       fillItem(paraStartingWith(scope, h.trim()), h, lines[i]),
     ).length
-    if (n > 0) did(`Ⅲ-1 평가의 기본 방향 가·다·라 ${n}개 (나·마~차는 양식 유지)`)
+    if (n > 0) did(`Ⅲ-1 평가의 기본 방향 가·다·라 ${n}개 (마~차는 양식 유지)`)
+
+    /*
+     * 나 = 분할점수 방식. 양식에는 '추정분할점수'로 박혀 있어서, 고정분할을
+     * 고른 계획서도 문서에는 추정이라고 쓰여 나갔다. 교사가 고른 값을 따른다.
+     * AI 초안이 아니라 계산값이므로 검정 글씨 그대로 둔다.
+     */
+    const b = paraStartingWith(scope, '나.')
+    if (!b) warn("Ⅲ-1 '나.' 문단을 찾지 못했습니다")
+    else {
+      doc.setPara(
+        b,
+        `나. 성취도는 기준 성취율에 따른 ${plan.split_score_type}분할점수로 설정하여 산출한다.`,
+      )
+      did(`Ⅲ-1 나 · ${plan.split_score_type}분할점수`)
+    }
   }
 
   /* ── Ⅲ-2 평가의 방침 — 값 스팬만 ── */

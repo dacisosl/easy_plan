@@ -57,13 +57,7 @@ export function fallbackSections(
   void school
   const split = (s: string) => s.split(/\n+/).map((x) => x.trim()).filter(Boolean)
   const n = subject.name
-  const plan1 = split(subject.teaching_plan)
   return {
-    // 교사 수와 무관하게 한 덩어리 — 진도와 평가 기준은 어차피 같다
-    I: [
-      plan1.join(' ') ||
-        `${n}의 핵심 아이디어를 중심으로 단원을 구성하고, 자료 탐구 · 토의 · 정리 순으로 지도한다.`,
-    ],
     II:
       split(subject.objectives).slice(0, 3).length > 0
         ? split(subject.objectives).slice(0, 3)
@@ -214,13 +208,12 @@ export function sectionsPrompt(plan: SemesterPlan, subject: Subject): {
     system:
       `${TONE} 양식에서 빨간 글씨로 표시된 '교사가 채울 곳'만 쓴다. ` +
       `JSON 하나만 출력한다: ` +
-      `{"I": string[], "II": string[], "III1": string[], "semesterLevels": {"A": string, ...}, "minLevel": string}. ` +
+      `{"II": string[], "III1": string[], "semesterLevels": {"A": string, ...}, "minLevel": string}. ` +
       `각 문장은 완성형이고 번호(가·나·다)를 붙이지 않는다 — 코드가 붙인다.`,
     user: [
       `과목: ${subject.name} (${plan.grade}학년, ${plan.credit}학점) · 지도교사 ${Math.max(1, plan.teachers.length)}인`,
       `영역: ${subject.areas.map((a) => a.name).join(', ') || '(없음)'}`,
       '',
-      'I = 교수학습 운영계획. 배열 원소 하나. 3~4문장. 지도교사가 여럿이어도 같은 진도·같은 평가 기준을 쓰므로 나누지 않는다.',
       'II = 평가의 목적 가·나·다에 해당하는 3문장. 과목 목표에서 나오는 내용. 각 문장은 "~ 능력을 기르도록 한다." 로 끝난다.',
       'III1 = 평가의 기본 방향 가·다·라에 해당하는 3문장. 순서대로',
       `  1) "${subject.name} 교과 내용 요소에 대한 단순한 지식 습득 여부보다는 …" 로 시작하는 문장`,
@@ -334,7 +327,6 @@ export function parseSections(
 
   return {
     value: {
-      I: pick('I', fb.I),
       II: pick('II', fb.II),
       III1: pick('III1', fb.III1),
       semesterLevels: levels,
