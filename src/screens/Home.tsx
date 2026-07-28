@@ -648,7 +648,7 @@ function PlanForm({
               className={
                 essay < school.rules.essay_min
                   ? 'font-semibold text-red'
-                  : 'font-semibold text-blue'
+                  : 'font-semibold text-navy'
               }
             >
               서논술 {essay.toFixed(0)}% / {school.rules.essay_min}%
@@ -709,7 +709,7 @@ function RatioHead({ className = '' }: { className?: string }) {
       <span className="label">항목</span>
       <span className="label text-center">반영 비율</span>
       {/* 서논술은 반영 비율 안에 든 값이다 — 글씨 색으로 다른 종류임을 알린다 */}
-      <span className="label text-center font-semibold text-blue">서논술 비율</span>
+      <span className="label text-center font-semibold text-navy">서논술 비율</span>
     </div>
   )
 }

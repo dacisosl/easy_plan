@@ -10,48 +10,49 @@
   --font-sans: Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* 바탕 · 면 — 전부 흰색 계열 */
+  /*
+   * 바탕은 네 겹이다: 화면(흰색) → 구획 상자 → 입력 묶음 → 입력 칸(흰색).
+   * 겹마다 아주 조금씩만 어둡게 해서, 깊이는 느껴지되 색이 쌓이지 않게 한다.
+   */
   --color-bg: #ffffff;
   --color-surface: #ffffff;
-  --color-surface-sub: #f8f9fa;
-  --color-surface-off: #f1f3f5;
-  /* 입력 칸 묶음 바탕 — 흰 바탕에서 '쓰는 자리'가 분명히 드러나는 옅은 청회색 */
-  --color-field: #e9eff5;
+  --color-surface-sub: #fafbfc;
+  --color-surface-off: #f2f4f6;
+  /* 입력 칸 묶음 바탕 — '쓰는 자리'임이 드러날 만큼만 푸른기를 준다 */
+  --color-field: #f2f6fa;
 
-  /* 테두리 — 옅게 */
-  --color-line: #e8eaed;
-  --color-line-soft: #eef0f2;
-  --color-line-input: #e0e3e7;
-  --color-line-chip: #e0e3e7;
+  /* 테두리 — 안쪽일수록 옅게 */
+  --color-line: #e9ecef;
+  --color-line-soft: #f0f2f4;
+  --color-line-input: #dde1e6;
+  --color-line-chip: #dde1e6;
   /* 구획을 감싸는 테두리 — 흰 바탕에서 카드 경계가 분명히 보이게 */
-  --color-line-card: #cdd4dc;
+  --color-line-card: #d5dae1;
 
-  /* 글자 */
-  --color-ink: #1a1c1e;
-  --color-ink-2: #6b7075;
-  --color-ink-3: #9aa0a6;
-  --color-ink-4: #b8bdc2;
-  --color-ink-5: #c9cdd1;
-
-  /* 주색 — 맑은 청남 */
-  --color-navy: #17547a;
-  --color-navy-deep: #123f5c;
-  --color-navy-mid: #5b87a6;
-  --color-navy-bg: #f0f6fa;
-  /* 누르는 버튼 바탕 — 흰 화면에서 확실히 파랗게 보이는 정도 */
-  --color-accent-soft: #d7e8f4;
-  --color-accent-soft-line: #b3d2e7;
-  --color-accent-soft-hover: #c6dfef;
-  --color-navy-line: #cfe0eb;
-  --color-navy-line-hover: #b3cddd;
+  /* 글자 — ink-3까지는 본문급 대비(4.5:1)를 지킨다. ink-4·5는 장식용 */
+  --color-ink: #1f2124;
+  --color-ink-2: #565c63;
+  --color-ink-3: #696f76;
+  --color-ink-4: #a6acb3;
+  --color-ink-5: #c4c9cf;
 
   /*
-   * 진한 파랑 — 서논술 비율처럼 '다른 종류의 숫자'를 표시할 때만 쓴다.
-   * 주색(navy #17547a)은 청록기가 있어 파랑으로 읽히지 않는다.
+   * 주색은 파랑 하나뿐이다.
+   *
+   * 예전에는 청남(#17547a)과 파랑(#1350bd)이 같이 있었는데, 청남은 청록기가
+   * 있어 파랑으로 읽히지 않으면서 파랑과도 충돌했다. 한 색조에서 명도만
+   * 달리해 전부 파생시킨다. 흰 글씨를 얹는 navy·navy-deep만 대비를 위해 진하다.
    */
-  --color-blue: #1350bd;
-  --color-blue-bg: #e6eefc;
-  --color-blue-line: #b9cef0;
+  --color-navy: #2b66ad;
+  --color-navy-deep: #1f4c85;
+  --color-navy-mid: #7ba0c8;
+  --color-navy-bg: #f3f7fd;
+  --color-navy-line: #d8e4f4;
+  --color-navy-line-hover: #bad0ec;
+  /* 누르는 버튼 바탕 — 흰 화면에서 확실히 파랗게 보이는 정도 */
+  --color-accent-soft: #dceafa;
+  --color-accent-soft-line: #bfd6f2;
+  --color-accent-soft-hover: #cce0f7;
 
   /* 오류 — 붉은색 */
   --color-red: #c62828;
@@ -60,8 +61,11 @@
   --color-red-line-strong: #e5b8b4;
   --color-red-ink: #8f3a33;
   --color-red-hover: #fbe9e7;
-  /* 지우기 아이콘 평상시 색 — 눈에 띄되 위협적이지 않게 */
-  --color-red-soft: #d68d88;
+  /*
+   * 지우기 아이콘 평상시 색 — 물러나 있되 보이기는 해야 한다.
+   * 아이콘은 글씨보다 낮은 3:1이 하한이라 그 선에 맞춘다(3.27:1).
+   */
+  --color-red-soft: #cb7871;
 
   /* 경고 — 황토색 */
   --color-amber: #a9601a;
@@ -352,13 +356,12 @@
    * 글씨 색으로 다른 종류임을 알린다.
    */
   .control-sub {
-    @apply font-semibold text-blue;
-    background: var(--color-blue-bg);
-    border-color: var(--color-blue-line);
+    @apply border-navy-line font-semibold text-navy;
+    background: var(--color-navy-bg);
   }
   .control-sub:hover:not(:disabled),
   .control-sub:focus {
-    border-color: var(--color-blue);
+    @apply border-navy-line-hover;
   }
 }
 
