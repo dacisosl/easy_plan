@@ -701,15 +701,15 @@ function PlanForm({
 
 /* ── 비율 조정 한 줄 ──────────────────────────── */
 
-const RATIO_COLS = 'grid grid-cols-[1fr_72px_72px] items-center gap-2'
+const RATIO_COLS = 'grid grid-cols-[1fr_80px_80px] items-center gap-2'
 
 function RatioHead({ className = '' }: { className?: string }) {
   return (
     <div className={`${RATIO_COLS} px-1 ${className}`}>
       <span className="label">항목</span>
       <span className="label text-center">반영 비율</span>
-      {/* 서·논술은 반영 비율 안에 든 값이다 — 이름과 칸 색으로 그 관계를 드러낸다 */}
-      <span className="label text-center text-navy">↳ 서·논술</span>
+      {/* 서논술은 반영 비율 안에 든 값이다 — 글씨 색으로 다른 종류임을 알린다 */}
+      <span className="label text-center text-navy">서논술 비율</span>
     </div>
   )
 }
