@@ -165,10 +165,21 @@ function HeroScreen({
   onDraftChange: (d: SubjectDraft | null) => void
   onPick: (name: string, listed: boolean) => void
 }) {
-  const [revealed, setRevealed] = useState(false)
+  /*
+   * 세 장면으로 넘어간다.
+   *   ask     물음만 크게 — 고개를 끄덕일 시간을 준다
+   *   leaving 물음이 물러난다 (사라지는 동안)
+   *   answer  그 자리에 답이 아래에서 떠오른다
+   * 과목을 고르면(loading) 이 셋은 전부 물러나고 기다림 안내만 남는다.
+   */
+  const [phase, setPhase] = useState<'ask' | 'leaving' | 'answer'>('ask')
   useEffect(() => {
-    const t = setTimeout(() => setRevealed(true), 1300)
-    return () => clearTimeout(t)
+    const a = setTimeout(() => setPhase('leaving'), 1250)
+    const b = setTimeout(() => setPhase('answer'), 1250 + 240)
+    return () => {
+      clearTimeout(a)
+      clearTimeout(b)
+    }
   }, [])
 
   {
@@ -178,20 +189,24 @@ function HeroScreen({
           leaving ? 'fade-out' : 'fade-in'
         }`}
       >
-        {/* 물음이 먼저 — 이 한마디에 고개가 끄덕여져야 아래가 읽힌다 */}
-        <span className="fade-in rounded-full bg-white/70 px-4 py-1.5 text-[13.5px] text-ink-2">
-          평가계획서 편집하느라 그동안 너무 <b className="font-semibold text-red">화</b>나셨나요?
-        </span>
-
         {/*
-         * 답은 잠깐 뒤에 펼친다.
-         *
-         * 높이를 애니메이션하려고 grid-rows(0fr→1fr)와 max-height 전환을 차례로
-         * 써 봤는데 이 배치에서는 둘 다 0에 묶여 아예 안 열렸다. 높이를 건드리는
-         * 대신 **나타나는 것만** 다루기로 한다 — 나타날 때 아래에서 떠오르므로
-         * 위의 물음이 밀려 올라가는 느낌은 그대로 남는다.
+         * 과목을 고른 뒤에는 이 화면의 말을 전부 거둔다.
+         * 기다리는 사람에게 읽을 것을 남겨 두면 뭘 봐야 할지 헷갈린다.
          */}
-        {revealed && (
+        {loading ? (
+          <LoadingBar />
+        ) : phase !== 'answer' ? (
+          /* 물음 — 이 한마디에 고개가 끄덕여져야 다음이 읽힌다 */
+          <p
+            className={`text-center text-[clamp(20px,2.6vw,30px)] leading-[1.45] font-medium tracking-[-0.02em] text-ink-2 ${
+              phase === 'leaving' ? 'fade-out' : 'fade-in'
+            }`}
+          >
+            평가계획서 편집하느라
+            <br />
+            그동안 너무 <span className="font-semibold text-red">화</span>나셨나요?
+          </p>
+        ) : (
           <div className="w-full">
             <div className="fade-up flex flex-col items-center pt-5">
               <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
@@ -207,7 +222,7 @@ function HeroScreen({
                 <SubjectPicker
                   value=""
                   onPick={onPick}
-                  autoFocus={revealed}
+                  autoFocus
                   hero
                   onDraftChange={onDraftChange}
                   placeholder="과목명을 입력하세요 — 예) 대수, 통합사회1"
@@ -240,11 +255,7 @@ function HeroScreen({
               </div>
 
               <div className="mt-5 h-6">
-                {pickError ? (
-                  <span className="text-[13px] text-red">{pickError}</span>
-                ) : (
-                  loading && <LoadingBar />
-                )}
+                {pickError && <span className="text-[13px] text-red">{pickError}</span>}
               </div>
             </div>
           </div>
@@ -262,17 +273,18 @@ function HeroScreen({
  * 말로 알려 주고, 막대로 '돌아가고 있음'을 보인다.
  */
 function LoadingBar() {
-  const STEPS = ['성취기준을 가져오는 중…', '단원에 맞춰 정리하는 중…', '양식을 준비하는 중…']
+  // 기다림이 1.2초라 셋을 돌리면 읽을 틈이 없다. 둘이면 각 0.6초씩 읽힌다.
+  const STEPS = ['성취기준을 가져오는 중…', '선생님을 위한 양식을 준비하는 중…']
   const [at, setAt] = useState(0)
   useEffect(() => {
-    const t = setInterval(() => setAt((i) => Math.min(i + 1, STEPS.length - 1)), 420)
+    const t = setInterval(() => setAt((i) => Math.min(i + 1, STEPS.length - 1)), 600)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
-    <div className="fade-in flex flex-col items-center gap-2.5">
-      <span className="text-[13.5px] text-ink-2">{STEPS[at]}</span>
+    <div className="fade-in flex flex-col items-center gap-3">
+      <span className="text-[15px] text-ink-2">{STEPS[at]}</span>
       <span className="loading-bar" />
     </div>
   )
@@ -669,8 +681,15 @@ function PlanForm({
         {plan.exam_count > 0 && (
           <div id="fs-anchor" className="flex items-start gap-5">
             <h3 className="fs-title w-[148px] shrink-0 pt-1.5">시험범위</h3>
-            {/* 미리보기는 글자 길이만큼만 차지하고, 고치는 버튼이 바로 뒤에 붙는다 */}
-            <div className="flex min-w-0 flex-1 items-start gap-3">
+            {/*
+             * 미리보기는 글자 길이만큼만 차지하고, 고치는 버튼이 바로 뒤에 붙는다.
+             * 접혀 있을 때는 버튼이 미리보기 칸과 같은 높이로 늘어나 나란히 맞는다.
+             */}
+            <div
+              className={`flex min-w-0 flex-1 gap-3 ${
+                openSec.anchor || firstError('anchor') ? 'items-start' : 'items-stretch'
+              }`}
+            >
               {openSec.anchor || firstError('anchor') ? (
                 <div className="field-box grid flex-1 grid-cols-2 gap-3">
                   {plan.exams.map((e) => (
@@ -695,7 +714,9 @@ function PlanForm({
               )}
               {!firstError('anchor') && (
                 <button
-                  className="btn btn-sm btn-accent shrink-0"
+                  className={`btn btn-accent shrink-0 px-4 text-sm ${
+                    openSec.anchor ? 'btn-sm' : 'h-auto self-stretch'
+                  }`}
                   onClick={() => toggleSec('anchor')}
                 >
                   {openSec.anchor ? '접기 ▴' : '직접 입력 ▾'}
