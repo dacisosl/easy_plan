@@ -397,15 +397,26 @@ export function examEssayPct(plan: SemesterPlan, examNo: number): number {
   return total > 0 ? Math.round((essay / total) * 100) : 0
 }
 
-/** 서술·논술 합계 = 지필 서술형 + 수행 논술형 */
+/**
+ * 회차 하나가 서술·논술 비율에 보태는 몫(%). 전체 성적 기준.
+ *
+ * ★ 소수점은 **버린다**. 서술·논술은 30% 이상이어야 하는데 올려 적으면
+ * 실제로는 미달인 계획서가 충족한 것처럼 보인다(25/100 × 30% = 7.5 → 7).
+ * 문서에 적히는 값과 규칙 검사에 쓰는 값이 같아야 하므로 여기 하나로 모은다.
+ */
+export function examEssayShare(plan: SemesterPlan, examNo: number): number {
+  const e = plan.exams.find((x) => x.no === examNo)
+  if (!e) return 0
+  const total = e.parts.reduce((s, p) => s + p.points, 0)
+  if (total <= 0) return 0
+  const essay = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
+  return Math.floor((essay / total) * examRatioOf(plan, examNo))
+}
+
+/** 서술·논술 합계 = 지필 서술형 + 수행 논술형. 회차별로 버린 값을 더한다. */
 export function essayTotal(plan: SemesterPlan, examRatio: number): number {
-  const written = plan.exams.reduce((sum, e) => {
-    const total = e.parts.reduce((s, p) => s + p.points, 0)
-    const essay = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
-    // 회차별 비율이 있으면 그것을, 없으면 넘겨받은 전체 비율을 등분해 쓴다
-    const share = e.ratio != null ? e.ratio : examRatio / Math.max(1, plan.exam_count)
-    return sum + (total > 0 ? (essay / total) * share : 0)
-  }, 0)
+  void examRatio // 회차별 비율은 examRatioOf가 본다 — 호출부 호환을 위해 남겨 둔다
+  const written = plan.exams.reduce((sum, e) => sum + examEssayShare(plan, e.no), 0)
   return written + perfEssayTotal(plan)
 }
 

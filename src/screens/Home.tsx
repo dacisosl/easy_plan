@@ -665,10 +665,10 @@ function PlanForm({
                   : 'font-semibold text-navy'
               }
             >
-              서논술 {essay.toFixed(0)}% / {school.rules.essay_min}%
+              서논술 {essay}% / {school.rules.essay_min}%
             </span>
             <span className="text-ink-2">
-              지필 {(essay - perfEssayTotal(plan)).toFixed(0)}% + 수행 {perfEssayTotal(plan)}%
+              지필 {essay - perfEssayTotal(plan)}% + 수행 {perfEssayTotal(plan)}%
             </span>
           </div>
           {/* 두 칸의 기준이 달라서 합계와 숫자가 어긋나 보인다 — 짚어 준다 */}

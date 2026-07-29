@@ -15,6 +15,7 @@ import {
   calendarOf,
   classRange,
   essayTotal,
+  examEssayShare,
   examRatioOf,
   examStandardCodes,
   isContinued,
@@ -325,14 +326,14 @@ export async function renderForm(
     const cols = [
       ...plan.exams.map((e) => {
         const codes = examStandardCodes(subject, plan.exams, e.no)
-        const total = e.parts.reduce((s, p) => s + p.points, 0)
         const es = e.parts.filter((p) => p.kind === '서술형').reduce((s, p) => s + p.points, 0)
         // 회차마다 반영 비율이 다를 수 있다 — 등분값을 쓰지 않는다
         const perExam = examRatioOf(plan, e.no)
         return {
           title: `${e.no}회 정기시험`,
           ratio: `${perExam}%`,
-          essay: total > 0 ? `서술형 ${((es / total) * perExam).toFixed(0)}%` : '0%',
+          // 소수점은 버린다 — 올려 적으면 30% 규칙을 넘긴 것처럼 보인다
+          essay: es > 0 ? `서술형 ${examEssayShare(plan, e.no)}%` : '0%',
           std: codes.length ? `${codes[0]}~${codes[codes.length - 1]}` : '',
           when: monthWeekLabel(school, plan.semester, e.week),
         }
@@ -520,7 +521,7 @@ export async function renderForm(
       '서술형･논술형',
       cols.map((c) => c.essay),
       'Ⅳ 서술·논술',
-      `${essayTotal(plan, plan.exam_ratio).toFixed(0)}%`,
+      `${essayTotal(plan, plan.exam_ratio)}%`,
     )
     fillRow('성취 기준', cols.map((c) => c.std), 'Ⅳ 성취기준 범위')
     fillRow('평가 시기', cols.map((c) => c.when), 'Ⅳ 평가 시기')
