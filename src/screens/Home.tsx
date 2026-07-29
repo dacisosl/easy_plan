@@ -67,6 +67,16 @@ export function Home() {
    * 여기서 effect로 하면 첫 프레임이 '계획서 없음'으로 그려져 첫 화면이 반짝인다.
    */
 
+  /*
+   * 첫 화면으로 돌아오면 '물러나는 중' 표시를 끈다.
+   *
+   * 과목을 고를 때 켠 페이드아웃이 그대로 남아 있으면, '이전'으로 돌아왔을 때
+   * 첫 화면이 투명한 채로 그려져 아무것도 없는 화면이 된다.
+   */
+  useEffect(() => {
+    if (!currentPlanId) setLeaving(false)
+  }, [currentPlanId])
+
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
   const pickSubject = async (name: string, listed: boolean) => {
