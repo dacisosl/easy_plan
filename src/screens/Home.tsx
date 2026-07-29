@@ -112,22 +112,17 @@ export function Home() {
           leaving ? 'fade-out' : 'fade-in'
         }`}
       >
-        {/*
-         * 문제를 먼저 — '분량'이 아니라 '같은 값을 몇 곳에 옮겨 적는가'다.
-         * 그게 교사가 실제로 겪는 고생이고, 이 도구가 없애는 것도 그것이다.
-         * 숫자는 실제로 만든 계획서 한 부를 세어 나온 값이다(수행평가 2 · 정기 2회 기준).
-         */}
-        <span className="mb-5 rounded-full bg-white/70 px-4 py-1.5 text-[13px] text-ink-2">
-          계획서 한 부에 — 수행평가명 <b className="font-semibold text-ink">7곳</b> · 반영 비율{' '}
-          <b className="font-semibold text-ink">11곳</b> · 성취기준{' '}
-          <b className="font-semibold text-ink">49번</b>
+        {/* 문제를 먼저 — 공감으로 연다. 이 한마디에 고개가 끄덕여져야 아래가 읽힌다 */}
+        <span className="mb-5 rounded-full bg-white/70 px-4 py-1.5 text-[13.5px] text-ink-2">
+          평가계획서 편집하느라 너무 <b className="font-semibold text-red">화</b>가 나시나요?
         </span>
 
         <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
-          선생님, 편집은 <span className="text-navy">제가 합니다.</span>
+          선생님, <span className="text-red">편집</span>은{' '}
+          <span className="text-navy">제가 합니다.</span>
         </h1>
         <p className="mt-4 text-center text-[18px] text-ink-2">
-          선생님은 <b className="font-semibold text-ink">학생을 위한 평가</b>에만 집중하세요.
+          이젠 <b className="font-semibold text-ink">‘평가계획’</b>에만 집중해주세요.
         </p>
 
         {/* 이 화면의 할 일은 하나 — 검색줄이 곧 시작 버튼이다 */}

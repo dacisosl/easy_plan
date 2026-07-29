@@ -315,8 +315,13 @@
    */
   .hero-wash {
     background:
-      radial-gradient(46% 42% at 50% 42%, #cfe1fa 0%, rgba(207, 225, 250, 0.55) 42%, rgba(207, 225, 250, 0) 78%),
-      radial-gradient(72% 62% at 50% 40%, #e4eefc 0%, rgba(228, 238, 252, 0) 76%),
+      radial-gradient(
+        50% 46% at 50% 44%,
+        #b7d4f6 0%,
+        rgba(183, 212, 246, 0.72) 38%,
+        rgba(183, 212, 246, 0) 76%
+      ),
+      radial-gradient(85% 70% at 50% 42%, #d8e7fb 0%, rgba(216, 231, 251, 0) 80%),
       var(--color-bg);
   }
 
