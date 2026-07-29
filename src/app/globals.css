@@ -281,8 +281,9 @@
    * 상단 바 간판 — 지금 어느 과목의 몇 학기를 만지고 있는지 늘 보인다.
    * 작게, 알약 모양으로. 화면 안 내용과 경쟁하지 않게 한다.
    */
+  /* 양옆 버튼(h-10)과 키를 맞춘다 — 혼자 납작하면 스티커처럼 붕 떠 보인다 */
   .nameplate {
-    @apply flex items-center gap-2 rounded-full border border-line-input px-3 py-[5px] text-[12px] leading-none;
+    @apply flex h-10 items-center gap-2.5 rounded-full border border-line-input px-4 text-[15px] leading-none;
     background: var(--color-surface-sub);
   }
   /* 살아 있다는 신호 — 천천히 숨 쉬는 점 */

@@ -7,6 +7,7 @@
  * 화면 안에 큰 제목을 또 두지 않는 대신, 스크롤해도 따라오는 이 줄이 그 역할을 한다.
  */
 
+import { useEffect, useRef, useState } from 'react'
 import { usePlanStore, type ScreenId } from '@/store/usePlanStore'
 
 const DOING: Record<ScreenId, string> = {
@@ -18,6 +19,17 @@ const DOING: Record<ScreenId, string> = {
 
 export function AppHeader() {
   const { screen, go, currentPlanId, startNew } = usePlanStore()
+  /*
+   * 학교 마크 — public/school-logo.png 를 넣으면 뜨고, 없으면 '평' 사각형으로.
+   * onError만으로는 부족하다. 리액트가 붙기 전에 이미 실패해 있으면 그 이벤트를
+   * 놓치므로, 붙은 뒤에도 한 번 직접 확인한다.
+   */
+  const [logoMissing, setLogoMissing] = useState(false)
+  const logoRef = useRef<HTMLImageElement>(null)
+  useEffect(() => {
+    const el = logoRef.current
+    if (el?.complete && el.naturalWidth === 0) setLogoMissing(true)
+  }, [])
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))
   const subject = usePlanStore((s) => {
     const p = s.plans.find((x) => x.id === s.currentPlanId)
@@ -35,9 +47,20 @@ export function AppHeader() {
           onClick={() => go('home')}
           title="처음으로"
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-navy text-[13px] font-semibold text-white">
-            평
-          </span>
+          {logoMissing ? (
+            <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-navy text-[13px] font-semibold text-white">
+              평
+            </span>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              ref={logoRef}
+              src="/school-logo.png"
+              alt="학교 마크"
+              className="h-8 w-8 object-contain"
+              onError={() => setLogoMissing(true)}
+            />
+          )}
           <span className="text-sm font-semibold text-ink">평가계획 도우미</span>
         </button>
 

@@ -112,6 +112,18 @@ export function Home() {
           leaving ? 'fade-out' : 'fade-in'
         }`}
       >
+        {/*
+         * 첫인상 한 줄 — 역할 분담을 약속한다.
+         * 큰 줄이 감정(내가 대신 한다), 작은 줄이 근거(20쪽·입력 한 번)를 맡는다.
+         */}
+        <div className="mb-7 flex flex-col items-center gap-3 text-center">
+          <h1 className="text-[38px] leading-[1.25] font-bold tracking-[-0.03em]">
+            선생님, <span className="text-navy">편집은 제가 할게요.</span>
+          </h1>
+          <p className="text-[16px] text-ink-2">
+            평가 기획만 해주세요 — 20쪽 운영계획서, 입력은 한 번이면 됩니다.
+          </p>
+        </div>
         <section
           id="fs-basic"
           className="flex items-center gap-4 rounded-box border border-line-card bg-surface-sub px-5 py-4"
@@ -671,13 +683,6 @@ function PlanForm({
               지필 {essay - perfEssayTotal(plan)}% + 수행 {perfEssayTotal(plan)}%
             </span>
           </div>
-          {/* 두 칸의 기준이 달라서 합계와 숫자가 어긋나 보인다 — 짚어 준다 */}
-          {plan.exam_count > 0 && (
-            <span className="text-[13px] text-ink-3">
-              정기시험의 단답·서·논술은 <b className="font-medium text-ink-2">시험지 100점</b> 기준입니다
-              (선택형은 나머지). 수행평가는 반영 비율 기준이고, 위 합계는 둘을 환산한 값입니다.
-            </span>
-          )}
         </div>
       </Fieldset>
 
@@ -692,11 +697,7 @@ function PlanForm({
         }
         error={firstError('perf')}
       >
-        {plan.performances.length === 0 ? (
-          <p className="text-[13px] text-ink-3">
-            위에서 &lsquo;+ 수행평가&rsquo;를 누르거나 여기서 추가하세요
-          </p>
-        ) : (
+        {plan.performances.length === 0 ? null : (
           plan.performances.map((p) => (
             <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
           ))
