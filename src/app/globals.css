@@ -8,6 +8,8 @@
 
 @theme {
   --font-sans: Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  /* 앱 이름표 전용 — 못 받아 오면 본문 글꼴로 떨어진다 */
+  --font-title: 'SUIT Variable', Pretendard, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /*

@@ -14,6 +14,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.css"
         />
+        {/* 제목용 — 본문(Pretendard)보다 획이 곧고 글자 폭이 넓어 이름표에 어울린다 */}
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT/fonts/variable/woff2/SUIT-Variable.css"
+        />
       </head>
       <body>{children}</body>
     </html>

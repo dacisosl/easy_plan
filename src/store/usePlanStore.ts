@@ -21,7 +21,8 @@ export type ScreenId =
   | 'home' // 작성 — 한 화면에 전부
   | 'generating' // AI 문안 생성 파이프라인
   | 'download' // 내려받기 (오류도 여기서 보여준다)
-  | 'admin' // 관리자 — 학사일정 · 배포표 · 학교 규칙
+  | 'extras' // 참고자료 — 아직 설계 전
+  | 'admin' // 관리자 — 학사일정 · 배포표 · 학교 규칙. 로고를 두 번 눌러 들어간다
 
 export type { FocusTarget }
 

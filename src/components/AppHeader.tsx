@@ -14,6 +14,7 @@ const DOING: Record<ScreenId, string> = {
   home: '편집 중',
   generating: '만드는 중',
   download: '내려받기',
+  extras: '참고자료',
   admin: '관리자',
 }
 
@@ -52,10 +53,16 @@ export function AppHeader() {
        * 로고(130px)와 버튼(78px) 폭이 달라 가운데가 26px쯤 밀린다.
        */}
       <div className="mx-auto grid h-16 max-w-[880px] grid-cols-[1fr_auto_1fr] items-center px-6">
+        {/*
+         * 로고를 두 번 누르면 관리자로 들어간다.
+         * 학사일정·배포표를 만지는 자리라 교사가 실수로 들어갈 일이 없어야 한다.
+         * 버튼으로 내놓으면 눌러 보게 되므로 숨은 길을 둔다.
+         */}
         <button
-          className="flex cursor-pointer items-center gap-2.5 justify-self-start border-0 bg-transparent"
+          className="flex cursor-pointer items-center gap-2.5 justify-self-start border-0 bg-transparent select-none"
           onClick={() => go('home')}
-          title="처음으로"
+          onDoubleClick={() => go('admin')}
+          title="처음으로 (두 번 누르면 관리자)"
         >
           {logoMissing ? (
             <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-navy text-[13px] font-semibold text-white">
@@ -71,7 +78,13 @@ export function AppHeader() {
               onError={() => setLogoMissing(true)}
             />
           )}
-          <span className="text-sm font-semibold text-ink">평가계획 도우미</span>
+          {/* '편집'만 굵게 — 이 도구가 대신 해 주는 일이 그것이다 */}
+          <span
+            className="text-[18px] font-medium tracking-[-0.02em] text-ink"
+            style={{ fontFamily: 'var(--font-title)' }}
+          >
+            평가계획 <b className="font-extrabold">편집</b>기
+          </span>
         </button>
 
         {/* 첫 화면에는 안내를 두지 않는다 — 화면 한가운데가 이미 그 말을 하고 있다 */}
@@ -115,12 +128,32 @@ export function AppHeader() {
               홈
             </button>
           )}
+          {/* 참고자료 — 무엇을 담을지는 아직 정하는 중이다 */}
           <button
-            className="btn btn-sm btn-ghost whitespace-nowrap"
-            onClick={() => go('admin')}
-            title="학사일정 · 예정시간 배포표 · 학교 규칙"
+            className="btn btn-sm btn-ghost flex items-center gap-1.5 whitespace-nowrap px-3"
+            onClick={() => go('extras')}
+            title="참고자료"
           >
-            관리자
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              {/* 머리 · 안테나 · 눈 · 귀 */}
+              <path d="M12 3.2v2.4" />
+              <circle cx="12" cy="2.4" r="1" />
+              <rect x="4.2" y="5.6" width="15.6" height="12.6" rx="3.4" />
+              <path d="M1.8 10.4v3.4M22.2 10.4v3.4" />
+              <path d="M9 11v1.6M15 11v1.6" />
+              <path d="M9.4 15.2h5.2" />
+            </svg>
+            참고자료
           </button>
         </div>
       </div>
