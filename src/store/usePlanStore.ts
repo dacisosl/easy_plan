@@ -13,7 +13,7 @@ import type {
 import { SCHOOL_SEED } from '@/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '@/data/subject'
 import { distributeStandards, orderedStandardCodes, weeksOf } from '@/lib/derive'
-import { buildPerformance, splitPerfRatios } from '@/lib/autofill'
+import { allocatePerfRatios, buildPerformance } from '@/lib/autofill'
 import type { ImportedSubject } from '@/lib/importStandards'
 import { unitsFromAreas } from '@/lib/importStandards'
 
@@ -381,7 +381,12 @@ export const usePlanStore = create<State & Actions>()(
       rebalancePerfRatios: () => {
         const plan = get().current()
         if (!plan || plan.performances.length === 0) return
-        const { ratios } = splitPerfRatios(
+        /*
+         * 있는 개수 그대로 나눈다.
+         * splitPerfRatios는 '상한을 지키려면 몇 개가 필요한가'까지 계산해서
+         * 실제보다 많은 수로 쪼갠다 — 40%를 하나 있는 영역에 20%만 주게 된다.
+         */
+        const ratios = allocatePerfRatios(
           plan.perf_ratio,
           plan.performances.length,
           get().school.rules.perf_area_max,

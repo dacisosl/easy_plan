@@ -23,7 +23,7 @@ import {
 } from '@/lib/derive'
 import { methodsFromIntent } from '@/lib/autofill'
 import { validate } from '@/lib/validate'
-import type { ExamPart, FocusTarget, SemesterPlan, Subject } from '@/types'
+import type { ExamPart, FocusTarget, Performance, SemesterPlan, Subject } from '@/types'
 
 /** 입력 즉시 반영하되 타이핑 중에는 재계산을 미룬다 */
 function useDebounced<T>(value: T, apply: (v: T) => void, ms = 300) {
@@ -167,13 +167,20 @@ function HeroScreen({
    */
   const [phase, setPhase] = useState<'ask' | 'leaving' | 'answer'>('ask')
   useEffect(() => {
+    if (phase !== 'ask') return
     const a = setTimeout(() => setPhase('leaving'), 1250)
     const b = setTimeout(() => setPhase('answer'), 1250 + 240)
     return () => {
       clearTimeout(a)
       clearTimeout(b)
     }
-  }, [])
+  }, [phase])
+
+  /* 기다리지 않고 바로 넘어가고 싶은 사람을 위해 */
+  const skipAhead = () => {
+    setPhase('leaving')
+    setTimeout(() => setPhase('answer'), 240)
+  }
 
   {
     return (
@@ -190,15 +197,24 @@ function HeroScreen({
           <LoadingBar />
         ) : phase !== 'answer' ? (
           /* 물음 — 이 한마디에 고개가 끄덕여져야 다음이 읽힌다 */
-          <p
-            className={`text-center text-[clamp(20px,2.6vw,30px)] leading-[1.45] font-medium tracking-[-0.02em] text-ink-2 ${
+          <div
+            className={`flex flex-col items-center ${
               phase === 'leaving' ? 'stage-out' : 'fade-in'
             }`}
           >
-            평가계획서 편집하느라
-            <br />
-            그동안 너무 <span className="font-semibold text-red">화</span>나셨나요?
-          </p>
+            <p className="text-center text-[clamp(20px,2.6vw,30px)] leading-[1.45] font-medium tracking-[-0.02em] text-ink-2">
+              평가계획서 편집하느라
+              <br />
+              그동안 너무 <span className="font-semibold text-red">화</span>나셨나요?
+            </p>
+            {/* 기다리기 싫은 사람은 눌러서 바로 넘어간다 */}
+            <button
+              className="mt-5 cursor-pointer border-0 bg-transparent p-0 text-[14px] text-navy underline-offset-4 hover:underline"
+              onClick={skipAhead}
+            >
+              화 나신다면 클릭!
+            </button>
+          </div>
         ) : (
           <div className="w-full">
             <div className="stage-in flex flex-col items-center pt-5">
@@ -357,8 +373,16 @@ function PlanForm({
   onPickSubject: (name: string, listed: boolean) => void
   onDone: () => void
 }) {
-  const { school, patchPlan, upsertPerf, rebalancePerfRatios, redistribute, focusTarget, clearFocus } =
-    usePlanStore()
+  const {
+    school,
+    patchPlan,
+    upsertPerf,
+    removePerf,
+    rebalancePerfRatios,
+    redistribute,
+    focusTarget,
+    clearFocus,
+  } = usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))!
   const subject = usePlanStore((s) => {
     const p = s.plans.find((x) => x.id === s.currentPlanId)!
@@ -559,6 +583,19 @@ function PlanForm({
   }, [subject.id, codes.length, plan.exams.length])
 
   /* ── 수행평가 ─────────────────────────────── */
+
+  /*
+   * 비율 조정에서 지울 때.
+   *
+   * 갓 추가해 비어 있는 줄이면 그냥 지운다 — 잘못 눌러 생긴 빈 칸을 지우는 데
+   * 확인을 또 받으면 성가시다. 이름이나 내용이 들어 있으면 그때만 묻는다.
+   */
+  const [confirmPerfId, setConfirmPerfId] = useState<string | null>(null)
+  const askRemovePerf = (p: Performance) => {
+    const filled = p.name.trim() || (p.intent ?? p.activity ?? '').trim()
+    if (filled) setConfirmPerfId(p.id)
+    else removePerf(p.id)
+  }
 
   const addPerf = () => {
     const taken = new Set(plan.performances.map((p) => p.week))
@@ -839,6 +876,7 @@ function PlanForm({
                 essay={perfEssayRatio(p)}
                 onRatio={(v) => setPerfRatio(p.id, v)}
                 onEssay={(v) => setPerfEssay(p.id, v)}
+                onRemove={() => askRemovePerf(p)}
               />
             ))}
           </div>
@@ -894,6 +932,21 @@ function PlanForm({
           <span className="text-[13px] text-amber">고칠 곳 {result.errors.length}군데</span>
         )}
       </div>
+
+      {/* 비율 조정에서 지울 때 — 내용이 든 것만 한 번 묻는다 */}
+      {confirmPerfId && (
+        <ConfirmDialog
+          title={`‘${
+            plan.performances.find((p) => p.id === confirmPerfId)?.name || '이름 없는 수행평가'
+          }’를 지울까요?`}
+          detail="내용과 성취기준, 루브릭까지 함께 사라집니다. 되돌릴 수 없습니다."
+          onConfirm={() => {
+            removePerf(confirmPerfId)
+            setConfirmPerfId(null)
+          }}
+          onClose={() => setConfirmPerfId(null)}
+        />
+      )}
     </Screen>
   )
 }
@@ -923,6 +976,7 @@ function RatioRow({
   onRatio,
   onShort,
   onEssay,
+  onRemove,
 }: {
   label: string
   /** 이름을 아직 안 쓴 수행평가에 붙일 임시 이름 */
@@ -934,11 +988,35 @@ function RatioRow({
   onRatio: (v: number) => void
   onShort?: (v: number) => void
   onEssay: (v: number) => void
+  /** 지울 수 있는 줄이면 — 마우스를 올렸을 때만 × 가 뜬다 */
+  onRemove?: () => void
 }) {
   return (
-    <div className={RATIO_COLS}>
-      <span className="truncate pl-1 text-[14px]" title={label || placeholder}>
-        {label || <span className="text-ink-3">{placeholder}</span>}
+    <div className={`${RATIO_COLS} group`}>
+      <span className="flex min-w-0 items-center gap-1.5 pl-1">
+        <span className="truncate text-[14px]" title={label || placeholder}>
+          {label || <span className="text-ink-3">{placeholder}</span>}
+        </span>
+        {onRemove && (
+          <button
+            className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-ink-4 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-hover hover:text-red focus-visible:opacity-100"
+            onClick={onRemove}
+            title="이 수행평가 지우기"
+            aria-label="이 수행평가 지우기"
+          >
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 12 12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              aria-hidden
+            >
+              <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+            </svg>
+          </button>
+        )}
       </span>
       <input
         className="control text-center"
