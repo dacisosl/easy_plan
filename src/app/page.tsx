@@ -30,9 +30,8 @@ export default function Page() {
   return (
     <div className={`min-h-screen ${onHero ? 'hero-wash' : 'bg-white'}`}>
       <AppHeader />
-      <main
-        className={`mx-auto px-6 pb-24 ${onHero ? 'max-w-[1000px] pt-4' : 'max-w-[880px] pt-8'}`}
-      >
+      {/* 폭은 헤더와 늘 같게 — 로고·버튼이 본문 모서리에 맞아야 오와 열이 선다 */}
+      <main className={`mx-auto max-w-[880px] px-6 pb-24 ${onHero ? 'pt-4' : 'pt-8'}`}>
         {body()}
       </main>
     </div>

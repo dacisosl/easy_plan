@@ -46,10 +46,14 @@ export function AppHeader() {
     <header
       className={`sticky top-0 z-10 ${onHero ? 'bg-transparent' : 'border-b border-line-soft bg-white'}`}
     >
-      {/* 폭을 본문과 같게 — 로고가 입력 상자 왼쪽 모서리, 버튼이 오른쪽 모서리에 맞는다 */}
-      <div className="mx-auto flex h-16 max-w-[880px] items-center justify-between px-6">
+      {/*
+       * 폭을 본문과 같게 — 로고가 입력 상자 왼쪽 모서리, 버튼이 오른쪽 모서리에 맞는다.
+       * 좌우를 1fr로 잡아 가운데가 진짜 가운데에 오게 한다. justify-between으로 두면
+       * 로고(130px)와 버튼(78px) 폭이 달라 가운데가 26px쯤 밀린다.
+       */}
+      <div className="mx-auto grid h-16 max-w-[880px] grid-cols-[1fr_auto_1fr] items-center px-6">
         <button
-          className="flex cursor-pointer items-center gap-2.5 border-0 bg-transparent"
+          className="flex cursor-pointer items-center gap-2.5 justify-self-start border-0 bg-transparent"
           onClick={() => go('home')}
           title="처음으로"
         >
@@ -70,8 +74,9 @@ export function AppHeader() {
           <span className="text-sm font-semibold text-ink">평가계획 도우미</span>
         </button>
 
+        {/* 첫 화면에는 안내를 두지 않는다 — 화면 한가운데가 이미 그 말을 하고 있다 */}
         {plan && subject ? (
-          <div className="nameplate">
+          <div className="nameplate justify-self-center">
             <span className="text-ink-2">
               {year}학년도 {plan.semester}학기
             </span>
@@ -83,10 +88,10 @@ export function AppHeader() {
             </span>
           </div>
         ) : (
-          <span className="text-xs text-ink-3">과목을 고르면 시작합니다</span>
+          <span />
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 justify-self-end">
           {screen !== 'home' && (
             <button className="btn btn-sm btn-ghost" onClick={() => go('home')}>
               작성으로

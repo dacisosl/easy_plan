@@ -67,9 +67,18 @@ export function Home() {
    * 여기서 effect로 하면 첫 프레임이 '계획서 없음'으로 그려져 첫 화면이 반짝인다.
    */
 
+  /**
+   * 첫 화면에서 기다림을 최소한 이만큼은 보여 준다.
+   *
+   * 성취기준을 가져오는 일이 빠를 때가 많은데, 그러면 아무 일도 없었던 것처럼
+   * 화면이 툭 바뀐다. 무슨 일이 일어났는지 읽을 틈은 줘야 눌린 걸 안다.
+   */
+  const MIN_SHOW_MS = 1200
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
   const pickSubject = async (name: string, listed: boolean) => {
     setPickError(null)
-    if (!plan) setLeaving(true)
+    // 과목을 이미 고른 뒤 바꾸는 경우엔 첫 화면이 아니라 그냥 갈아끼운다
     if (!listed) {
       const id = upsertManualSubject(name)
       if (plan) patchPlan({ subject_id: id })
@@ -77,10 +86,20 @@ export function Home() {
       return
     }
     setLoading(true)
+    const started = Date.now()
     try {
       const res = await fetch(`/api/subjects/${encodeURIComponent(name)}`)
       if (!res.ok) throw new Error(`과목을 불러오지 못했습니다 (${res.status})`)
-      const id = upsertSubject(await res.json())
+      const imported = await res.json()
+
+      if (!plan) {
+        await sleep(Math.max(0, MIN_SHOW_MS - (Date.now() - started)))
+        setLoading(false)
+        // 여기서야 물러난다 — 먼저 물리면 로딩 표시가 보이지 않는다
+        setLeaving(true)
+        await sleep(180)
+      }
+      const id = upsertSubject(imported)
       if (plan) patchPlan({ subject_id: id })
       else newPlan(id)
       setTimeout(redistribute, 0)
@@ -105,7 +124,8 @@ export function Home() {
       >
         {/* 문제를 먼저 — 공감으로 연다. 이 한마디에 고개가 끄덕여져야 아래가 읽힌다 */}
         <span className="mb-5 rounded-full bg-white/70 px-4 py-1.5 text-[13.5px] text-ink-2">
-          평가계획서 편집하느라 너무 <b className="font-semibold text-red">화</b>가 나시나요?
+          평가계획서 편집하느라 그동안 너무{' '}
+          <b className="font-semibold text-red">화</b>나셨나요?
         </span>
 
         <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
@@ -192,7 +212,7 @@ function LoadingBar() {
   const STEPS = ['성취기준을 가져오는 중…', '단원에 맞춰 정리하는 중…', '양식을 준비하는 중…']
   const [at, setAt] = useState(0)
   useEffect(() => {
-    const t = setInterval(() => setAt((i) => Math.min(i + 1, STEPS.length - 1)), 900)
+    const t = setInterval(() => setAt((i) => Math.min(i + 1, STEPS.length - 1)), 420)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
