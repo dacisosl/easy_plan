@@ -166,21 +166,23 @@ function HeroScreen({
    * 과목을 고르면(loading) 이 셋은 전부 물러나고 기다림 안내만 남는다.
    */
   const [phase, setPhase] = useState<'ask' | 'leaving' | 'answer'>('ask')
+  /*
+   * 한 단계씩 이어 붙인다.
+   *
+   * ★ 두 타이머를 한 effect에 같이 두면 안 된다. 첫 타이머가 phase를 바꾸는 순간
+   *   effect가 정리되면서 아직 안 터진 둘째 타이머까지 지워져, 물러난 채로 멈춘다
+   *   (화면이 통째로 비어 보인다).
+   */
   useEffect(() => {
-    if (phase !== 'ask') return
-    const a = setTimeout(() => setPhase('leaving'), 1250)
-    const b = setTimeout(() => setPhase('answer'), 1250 + 240)
-    return () => {
-      clearTimeout(a)
-      clearTimeout(b)
+    if (phase === 'ask') {
+      const t = setTimeout(() => setPhase('leaving'), 1250)
+      return () => clearTimeout(t)
+    }
+    if (phase === 'leaving') {
+      const t = setTimeout(() => setPhase('answer'), 260)
+      return () => clearTimeout(t)
     }
   }, [phase])
-
-  /* 기다리지 않고 바로 넘어가고 싶은 사람을 위해 */
-  const skipAhead = () => {
-    setPhase('leaving')
-    setTimeout(() => setPhase('answer'), 240)
-  }
 
   {
     return (
@@ -210,7 +212,7 @@ function HeroScreen({
             {/* 기다리기 싫은 사람은 눌러서 바로 넘어간다 */}
             <button
               className="mt-5 cursor-pointer border-0 bg-transparent p-0 text-[14px] text-navy underline-offset-4 hover:underline"
-              onClick={skipAhead}
+              onClick={() => setPhase('leaving')}
             >
               화 나신다면 클릭!
             </button>
