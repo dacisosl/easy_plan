@@ -113,7 +113,7 @@ export function Home() {
           <span className="text-navy">제가 합니다.</span>
         </h1>
         <p className="mt-4 text-center text-[18px] text-ink-2">
-          이젠 <b className="font-semibold text-ink">‘평가계획’</b>에만 집중해주세요.
+          이제 진짜 <b className="font-semibold text-ink">‘계획’</b>에만 집중해주세요.
         </p>
 
         {/* 이 화면의 할 일은 하나 — 검색줄이 곧 시작 버튼이다 */}
