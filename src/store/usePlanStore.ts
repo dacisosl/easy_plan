@@ -80,6 +80,8 @@ interface Actions {
     /** 교사가 직접 정한 서술·논술 비율 */
     essayRatio?: number | null
   }) => void
+  /** 빈 수행평가를 하나 붙이고 몫을 다시 나눈다 (두 일이 한 호흡이어야 한다) */
+  addPerf: (week: number) => void
   patchPerf: (id: string, patch: Partial<Performance>) => void
   removePerf: (id: string) => void
   /**
@@ -357,6 +359,19 @@ export const usePlanStore = create<State & Actions>()(
             : [...plan.performances, built],
           ai: undefined, // 입력이 바뀌면 초안은 무효
         })
+      },
+
+      /*
+       * 추가와 재배분을 한 호흡으로 묶는다.
+       *
+       * 예전에는 화면 쪽에서 upsertPerf 뒤에 setTimeout으로 재배분을 걸었는데,
+       * 그 사이에 방금 넣은 항목이 빠진 채로 계산되어 마지막 칸이 0%로 남곤 했다.
+       */
+      addPerf: (week) => {
+        const plan = get().current()
+        if (!plan) return
+        get().upsertPerf({ name: '', intent: '', week })
+        get().rebalancePerfRatios()
       },
 
       patchPerf: (id, patch) => {

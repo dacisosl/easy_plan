@@ -386,6 +386,7 @@ function PlanForm({
     school,
     patchPlan,
     upsertPerf,
+    addPerf: addPerfToPlan,
     removePerf,
     rebalancePerfRatios,
     redistribute,
@@ -411,13 +412,6 @@ function PlanForm({
   const showErrors = plan.performances.some((p) => p.name.trim().length > 0)
   const firstError = (t: FocusTarget) =>
     showErrors ? result.errors.find((e) => e.target === t)?.title : undefined
-
-  /*
-   * 시험 범위는 자동으로 배정돼 있으므로 접어 두고 요약만 보여 준다.
-   * '직접 입력'을 누르거나 오류가 걸리면 펼쳐진다.
-   */
-  const [openSec, setOpenSec] = useState({ anchor: false })
-  const toggleSec = (k: 'anchor') => setOpenSec((s) => ({ ...s, [k]: !s[k] }))
 
   /* 시험지 100점을 어떻게 나눌지 — 선택형은 나머지라 따로 적지 않는다 */
   const pointsOf = (e: { parts: ExamPart[] }, kind: ExamPart['kind']) =>
@@ -453,7 +447,6 @@ function PlanForm({
   /* 오류의 '고치기' — 구획을 펼치고 스크롤한 뒤 첫 입력에 포커스 */
   useEffect(() => {
     if (!focusTarget) return
-    if (focusTarget === 'anchor') setOpenSec((s) => ({ ...s, anchor: true }))
     const t = setTimeout(() => {
       const el = document.getElementById(`fs-${focusTarget}`)
       el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -609,9 +602,8 @@ function PlanForm({
   const addPerf = () => {
     const taken = new Set(plan.performances.map((p) => p.week))
     const week = teachWeeks.find((w) => !taken.has(w.no) && w.no > 2)?.no ?? teachWeeks[0]?.no ?? 3
-    upsertPerf({ name: '', intent: '', week })
-    // 개수가 바뀌면 몫을 다시 나눈다 — 40% 하나가 20/20, 20/10/10으로 갈린다
-    setTimeout(rebalancePerfRatios, 0)
+    // 추가와 재배분이 한 호흡이어야 마지막 칸이 0%로 남지 않는다
+    addPerfToPlan(week)
   }
 
   /* ── 서술·논술형 ──────────────────────────── */
@@ -636,17 +628,6 @@ function PlanForm({
   const perfSum = plan.performances.reduce((s, p) => s + p.ratio, 0)
   const ratioSum = plan.exam_ratio + perfSum
   const ready = plan.teachers.length > 0 && plan.performances.some((p) => p.name.trim())
-
-  /* 접힌 구획의 미리보기 — 회차마다 한 줄씩. 가로로 이으면 어느 회차 범위인지 흐려진다 */
-  const anchorPreview = (
-    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-control border border-line-input bg-surface px-3 py-2 text-[14px] text-ink">
-      {plan.exams.map((e) => (
-        <span key={e.no} className="truncate">
-          {e.no}회 정기고사 시험범위: {e.anchor_code ?? '미정'}까지
-        </span>
-      ))}
-    </div>
-  )
 
   return (
     /* 제목은 상단 바 간판이 대신한다 — 화면 안에 또 두지 않는다 */
@@ -742,8 +723,8 @@ function PlanForm({
             : 'border-line-card bg-surface-sub'
         }`}
       >
-        <div className="flex items-center gap-5">
-          <h2 className="fs-title w-[148px] shrink-0">정기시험</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="fs-title w-[104px] shrink-0">정기시험</h2>
           <div className="flex flex-1 flex-wrap items-center gap-2">
             {([2, 1] as const).map((n) => (
               <button
@@ -779,58 +760,57 @@ function PlanForm({
           </div>
         </div>
 
-        {/* 시험 범위 — 자동 배정돼 있으므로 평소엔 읽기만 하고, 고칠 때만 펼친다 */}
+        {/*
+         * 시험 범위 — 회차마다 드롭다운 하나씩, 한 줄로.
+         * 자동으로 배정돼 있으니 미리보기와 '직접 입력'을 거치지 않고
+         * 바로 고칠 수 있게 둔다. 한 번 더 누르게 할 만큼 깊은 설정이 아니다.
+         */}
         {plan.exam_count > 0 && (
-          <div id="fs-anchor" className="flex items-start gap-5">
-            <h3 className="fs-title w-[148px] shrink-0 pt-1.5">시험범위</h3>
-            {/*
-             * 미리보기는 글자 길이만큼만 차지하고, 고치는 버튼이 바로 뒤에 붙는다.
-             * 접혀 있을 때는 버튼이 미리보기 칸과 같은 높이로 늘어나 나란히 맞는다.
-             */}
-            <div
-              className={`flex min-w-0 flex-1 gap-3 ${
-                openSec.anchor || firstError('anchor') ? 'items-start' : 'items-stretch'
-              }`}
-            >
-              {openSec.anchor || firstError('anchor') ? (
-                <div className="field-box grid flex-1 grid-cols-2 gap-3">
-                  {plan.exams.map((e) => (
-                    <Field key={e.no} label={`${e.no}회 정기고사 (${e.week}주) 시험범위`}>
-                      <select
-                        className="control"
-                        value={e.anchor_code ?? ''}
-                        onChange={(ev) => setAnchor(e.no, ev.target.value)}
-                      >
-                        <option value="">— 고르세요 —</option>
-                        {codes.map((c) => (
-                          <option key={c} value={c}>
-                            {c} {stdText(c).slice(0, 30)}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  ))}
-                </div>
-              ) : (
-                anchorPreview
-              )}
-              {!firstError('anchor') && (
-                <button
-                  className={`btn btn-accent shrink-0 px-4 text-sm ${
-                    openSec.anchor ? 'btn-sm' : 'h-auto self-stretch'
-                  }`}
-                  onClick={() => toggleSec('anchor')}
-                >
-                  {openSec.anchor ? '접기 ▴' : '직접 입력 ▾'}
-                </button>
-              )}
+          <div id="fs-anchor" className="flex items-center gap-3">
+            <h3 className="fs-title w-[104px] shrink-0">시험범위</h3>
+            <div className="flex min-w-0 flex-1 gap-3">
+              {plan.exams.map((e) => (
+                /*
+                 * 닫혀 있을 때는 회차와 코드만, 펼치면 성취기준 문장까지 보인다.
+                 * 닫힌 칸에 긴 문장을 넣으면 어차피 잘려서 읽지도 못하면서 자리만 먹는다.
+                 * 그래서 선택 칸의 글자는 감추고 그 위에 짧은 표기를 얹는다.
+                 */
+                <label key={e.no} className="flex min-w-0 flex-1 items-center gap-2">
+                  {/*
+                   * 칸 이름은 '1회'까지만 — 왼쪽 제목이 이미 '시험범위'라 두 번 적을 필요가 없다.
+                   * 폭을 44px로 고정해 아래 '반영 비율' 칸과 세로줄이 맞는다.
+                   */}
+                  <span className="w-[44px] shrink-0 text-[14px] text-ink-2">{e.no}회</span>
+                  <span className="relative flex min-w-0 flex-1">
+                    <select
+                      className="control select-masked w-full min-w-0"
+                      value={e.anchor_code ?? ''}
+                      onChange={(ev) => setAnchor(e.no, ev.target.value)}
+                    >
+                      <option value="">— 고르세요 —</option>
+                      {codes.map((c) => (
+                        <option key={c} value={c}>
+                          {c} {stdText(c).slice(0, 40)}
+                        </option>
+                      ))}
+                    </select>
+                    <span
+                      className={`pointer-events-none absolute inset-y-0 left-3 flex items-center text-[14px] ${
+                        e.anchor_code ? 'text-ink' : 'text-ink-3'
+                      }`}
+                    >
+                      {e.anchor_code ?? '— 고르세요 —'}
+                    </span>
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
         )}
 
 
         {(firstError('exam') || firstError('anchor')) && (
-          <span className="pl-[168px] text-[13px] text-red">
+          <span className="pl-[116px] text-[13px] text-red">
             {firstError('exam') ?? firstError('anchor')}
           </span>
         )}
@@ -962,11 +942,63 @@ function PlanForm({
 
 /* ── 비율 조정 한 줄 ──────────────────────────── */
 
-const RATIO_COLS = 'grid grid-cols-[1fr_64px_58px_58px] items-center gap-1.5'
+const RATIO_COLS = 'grid grid-cols-[minmax(0,1fr)_66px_62px_66px] items-center gap-2'
+
+/**
+ * 칸에 맞게 글자를 줄여 다 보이게 한다.
+ *
+ * 수행평가 이름은 길이가 제각각이라 잘라내면 무슨 평가인지 알 수 없다.
+ * CSS만으로는 '길이에 맞춰 줄이기'가 안 되므로 실제로 재서 줄인다.
+ * 최소 크기까지 줄여도 안 들어가면 그때만 말줄임표로 넘긴다.
+ */
+function FitText({
+  text,
+  muted,
+  max = 14,
+  min = 10,
+}: {
+  text: string
+  /** 아직 이름을 안 쓴 자리 */
+  muted?: boolean
+  max?: number
+  min?: number
+}) {
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const fit = () => {
+      let size = max
+      el.style.fontSize = `${size}px`
+      while (size > min && el.scrollWidth > el.clientWidth + 0.5) {
+        size -= 0.5
+        el.style.fontSize = `${size}px`
+      }
+    }
+    fit()
+    // 칸 너비가 바뀌면 다시 잰다. 자기 자신이 아니라 부모를 봐야 되먹임이 없다.
+    const box = el.parentElement
+    if (!box) return
+    const ro = new ResizeObserver(fit)
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [text, max, min])
+
+  return (
+    <span
+      ref={ref}
+      className={`block truncate leading-snug ${muted ? 'text-ink-3' : ''}`}
+      title={text}
+    >
+      {text}
+    </span>
+  )
+}
 
 function RatioHead({ className = '' }: { className?: string }) {
   return (
-    <div className={`${RATIO_COLS} px-1 ${className}`}>
+    // 머리 줄 아래 가는 선 — 이름표와 값이 한 덩어리로 뭉쳐 보이지 않게
+    <div className={`${RATIO_COLS} border-b border-line-input px-1 pb-2 ${className}`}>
       <span className="label">항목</span>
       <span className="label text-center">반영 비율</span>
       {/* 정기시험은 시험지 100점을 어떻게 나눌지다 — 선택형은 나머지라 칸이 없다 */}
@@ -1003,8 +1035,8 @@ function RatioRow({
   return (
     <div className={`${RATIO_COLS} group`}>
       <span className="flex min-w-0 items-center gap-1.5 pl-1">
-        <span className="truncate text-[14px]" title={label || placeholder}>
-          {label || <span className="text-ink-3">{placeholder}</span>}
+        <span className="min-w-0 flex-1">
+          <FitText text={label || placeholder || ''} muted={!label} />
         </span>
         {onRemove && (
           <button

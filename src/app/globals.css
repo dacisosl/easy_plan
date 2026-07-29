@@ -137,6 +137,38 @@
   textarea.control {
     @apply h-auto min-h-11 resize-y py-[11px] leading-relaxed;
   }
+  /*
+   * 숫자 칸의 증감 화살표를 없앤다.
+   * 좁은 칸(비율·배점)에서 마우스를 올리면 화살표가 나타나 자리를 먹고,
+   * 가운데 정렬한 숫자가 한쪽으로 밀려 잘린 것처럼 보인다.
+   */
+  .control[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .control[type='number']::-webkit-outer-spin-button,
+  .control[type='number']::-webkit-inner-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  /*
+   * 닫혔을 때 고른 값을 감추는 선택 칸.
+   * 그 위에 짧은 표기를 얹어 보여 준다. 펼친 목록은 원래 글자를 그대로 쓰도록
+   * option에 색을 되돌려 준다 — 안 하면 목록까지 투명해진다.
+   */
+  .select-masked {
+    /*
+     * color를 투명하게 하면 펼침 화살표까지 같이 사라진다 — 화살표가 글자색을 따른다.
+     * 글자 칠만 지우고 color는 남겨 화살표를 살린다.
+     */
+    -webkit-text-fill-color: transparent;
+    color: var(--color-ink-2);
+  }
+  .select-masked option {
+    -webkit-text-fill-color: var(--color-ink);
+    color: var(--color-ink);
+  }
 
   .btn {
     @apply h-11 cursor-pointer rounded-control border-0 bg-navy px-7 text-[15px] font-semibold text-white;

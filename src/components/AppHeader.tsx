@@ -91,19 +91,32 @@ export function AppHeader() {
           <span />
         )}
 
+        {/*
+         * 오른쪽은 '어디로 갈 수 있는가'만 둔다.
+         *   작성 중      → 이전 (첫 화면으로 되돌아간다)
+         *   만든 뒤·관리자 → 이전 · 홈
+         * '새 계획서'는 없앴다 — 첫 화면으로 돌아가면 거기서 새로 시작하게 된다.
+         */}
         <div className="flex items-center gap-2 justify-self-end">
-          {screen !== 'home' && (
-            <button className="btn btn-sm btn-ghost" onClick={() => go('home')}>
-              작성으로
+          {currentPlanId && (
+            <button
+              className="btn btn-sm btn-ghost whitespace-nowrap"
+              onClick={screen === 'home' ? startNew : () => go('home')}
+            >
+              이전
             </button>
           )}
-          {currentPlanId && (
-            <button className="btn btn-sm btn-accent" onClick={startNew}>
-              새 계획서
+          {screen !== 'home' && (
+            <button
+              className="btn btn-sm btn-ghost whitespace-nowrap"
+              onClick={startNew}
+              title="첫 화면으로"
+            >
+              홈
             </button>
           )}
           <button
-            className="btn btn-sm btn-ghost"
+            className="btn btn-sm btn-ghost whitespace-nowrap"
             onClick={() => go('admin')}
             title="학사일정 · 예정시간 배포표 · 학교 규칙"
           >
