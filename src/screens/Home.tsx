@@ -117,75 +117,14 @@ export function Home() {
    */
   if (!plan || !subject) {
     return (
-      <div
-        className={`flex min-h-[calc(100vh-11rem)] flex-col items-center justify-center ${
-          leaving ? 'fade-out' : 'fade-in'
-        }`}
-      >
-        {/* 문제를 먼저 — 공감으로 연다. 이 한마디에 고개가 끄덕여져야 아래가 읽힌다 */}
-        <span className="mb-5 rounded-full bg-white/70 px-4 py-1.5 text-[13.5px] text-ink-2">
-          평가계획서 편집하느라 그동안 너무{' '}
-          <b className="font-semibold text-red">화</b>나셨나요?
-        </span>
-
-        <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
-          선생님, <span className="text-red">편집</span>은{' '}
-          <span className="text-navy">제가 합니다.</span>
-        </h1>
-        <p className="mt-4 text-center text-[18px] text-ink-2">
-          이제 진짜 <b className="font-semibold text-ink">‘계획’</b>에만 집중해주세요.
-        </p>
-
-        {/* 이 화면의 할 일은 하나 — 검색줄이 곧 시작 버튼이다 */}
-        <section id="fs-basic" className="mt-9 w-full max-w-[660px]">
-          <SubjectPicker
-            value=""
-            onPick={pickSubject}
-            autoFocus
-            hero
-            onDraftChange={setDraft}
-            placeholder="과목명을 입력하세요 — 예) 대수, 통합사회1"
-            right={
-              draft && (
-                <button
-                  className="btn btn-accent fade-in h-11 rounded-full px-5"
-                  disabled={loading}
-                  onClick={() => pickSubject(draft.name, draft.listed)}
-                >
-                  시작 →
-                </button>
-              )
-            }
-          />
-        </section>
-
-        {/*
-         * 숫자는 지어내지 않는다. data/고등학교_성취기준_2022.xlsx 를 실제로 세어 나온 값이다
-         * ('고급' 과목 8개를 뺀 뒤 231개 과목 · 성취기준 3,086개).
-         * 파일이 바뀌면 scripts로 다시 세서 고칠 것.
-         */}
-        <div className="proof mt-6">
-          <span>
-            <b>모든</b> 과목 작성 가능
-          </span>
-          <span className="text-ink-5">·</span>
-          <span>
-            <b>2022 개정</b> 성취기준 반영
-          </span>
-          <span className="text-ink-5">·</span>
-          <span>
-            <b>한글 파일</b> 그대로
-          </span>
-        </div>
-
-        <div className="mt-5 h-6">
-          {pickError ? (
-            <span className="text-[13px] text-red">{pickError}</span>
-          ) : (
-            loading && <LoadingBar />
-          )}
-        </div>
-      </div>
+      <HeroScreen
+        leaving={leaving}
+        loading={loading}
+        pickError={pickError}
+        draft={draft}
+        onDraftChange={setDraft}
+        onPick={pickSubject}
+      />
     )
   }
 
@@ -199,6 +138,120 @@ export function Home() {
       />
     </div>
   )
+}
+
+/**
+ * 첫 화면.
+ *
+ * 두 박자로 연다 — 물음 하나만 먼저 띄우고, 잠깐 뒤에 그 답을 펼친다.
+ * 한꺼번에 다 띄우면 볼 것이 많아 어디부터 읽을지 모른다.
+ *
+ * ★ Home이 아니라 여기서 상태를 갖는 이유: Home은 작성 화면일 때도 계속 살아 있어서,
+ *   '새 계획서'로 돌아오면 타이머가 이미 지나간 뒤라 펼침이 안 걸린다.
+ *   이 컴포넌트는 첫 화면에 올 때마다 새로 마운트되므로 매번 제대로 열린다.
+ */
+function HeroScreen({
+  leaving,
+  loading,
+  pickError,
+  draft,
+  onDraftChange,
+  onPick,
+}: {
+  leaving: boolean
+  loading: boolean
+  pickError: string | null
+  draft: SubjectDraft | null
+  onDraftChange: (d: SubjectDraft | null) => void
+  onPick: (name: string, listed: boolean) => void
+}) {
+  const [revealed, setRevealed] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setRevealed(true), 1300)
+    return () => clearTimeout(t)
+  }, [])
+
+  {
+    return (
+      <div
+        className={`flex min-h-[calc(100vh-11rem)] flex-col items-center justify-center ${
+          leaving ? 'fade-out' : 'fade-in'
+        }`}
+      >
+        {/* 물음이 먼저 — 이 한마디에 고개가 끄덕여져야 아래가 읽힌다 */}
+        <span className="fade-in rounded-full bg-white/70 px-4 py-1.5 text-[13.5px] text-ink-2">
+          평가계획서 편집하느라 그동안 너무 <b className="font-semibold text-red">화</b>나셨나요?
+        </span>
+
+        {/*
+         * 답은 잠깐 뒤에 펼친다.
+         *
+         * 높이를 애니메이션하려고 grid-rows(0fr→1fr)와 max-height 전환을 차례로
+         * 써 봤는데 이 배치에서는 둘 다 0에 묶여 아예 안 열렸다. 높이를 건드리는
+         * 대신 **나타나는 것만** 다루기로 한다 — 나타날 때 아래에서 떠오르므로
+         * 위의 물음이 밀려 올라가는 느낌은 그대로 남는다.
+         */}
+        {revealed && (
+          <div className="w-full">
+            <div className="fade-up flex flex-col items-center pt-5">
+              <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
+                선생님, <span className="text-red">편집</span>은{' '}
+                <span className="text-navy">제가 합니다.</span>
+              </h1>
+              <p className="mt-4 text-center text-[18px] text-ink-2">
+                이제 진짜 <b className="font-semibold text-ink">‘계획’</b>에만 집중해주세요.
+              </p>
+
+              {/* 이 화면의 할 일은 하나 — 검색줄이 곧 시작 버튼이다 */}
+              <section id="fs-basic" className="mt-9 w-full max-w-[660px]">
+                <SubjectPicker
+                  value=""
+                  onPick={onPick}
+                  autoFocus={revealed}
+                  hero
+                  onDraftChange={onDraftChange}
+                  placeholder="과목명을 입력하세요 — 예) 대수, 통합사회1"
+                  right={
+                    draft && (
+                      <button
+                        className="btn btn-accent fade-in h-11 rounded-full px-5"
+                        disabled={loading}
+                        onClick={() => onPick(draft.name, draft.listed)}
+                      >
+                        시작 →
+                      </button>
+                    )
+                  }
+                />
+              </section>
+
+              <div className="proof mt-6">
+                <span>
+                  <b>모든</b> 과목 작성 가능
+                </span>
+                <span className="text-ink-5">·</span>
+                <span>
+                  <b>2022 개정</b> 성취기준 반영
+                </span>
+                <span className="text-ink-5">·</span>
+                <span>
+                  <b>한글 파일</b> 그대로
+                </span>
+              </div>
+
+              <div className="mt-5 h-6">
+                {pickError ? (
+                  <span className="text-[13px] text-red">{pickError}</span>
+                ) : (
+                  loading && <LoadingBar />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 }
 
 /**

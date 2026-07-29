@@ -387,6 +387,20 @@
     animation: fade-out 200ms ease-in both;
     pointer-events: none;
   }
+  /* 아래에서 떠오르며 나타난다 — 위에 있던 것이 밀려 올라가는 느낌을 준다 */
+  .fade-up {
+    animation: fade-up 620ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(26px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
   @keyframes fade-in {
     from {
       opacity: 0;
