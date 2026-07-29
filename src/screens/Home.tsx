@@ -44,7 +44,6 @@ export function Home() {
     plans,
     subjects,
     currentPlanId,
-    openPlan,
     newPlan,
     patchPlan,
     upsertSubject,
@@ -64,17 +63,9 @@ export function Home() {
   const [draft, setDraft] = useState<SubjectDraft | null>(null)
 
   /*
-   * 새로고침하거나 창을 닫았다 와도 쓰던 계획서로 돌아온다.
-   * 목록을 보여 주는 대신 가장 최근 것을 그냥 이어서 연다 —
-   * 처음부터 다시 시작하려면 헤더의 '새 계획서'를 누르면 된다.
+   * 쓰던 계획서로 되돌아가는 일은 저장분을 읽는 시점에 끝난다(store의 onRehydrateStorage).
+   * 여기서 effect로 하면 첫 프레임이 '계획서 없음'으로 그려져 첫 화면이 반짝인다.
    */
-  const resumed = useRef(false)
-  useEffect(() => {
-    if (resumed.current || currentPlanId || plans.length === 0) return
-    resumed.current = true
-    const latest = [...plans].sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
-    if (latest) openPlan(latest.id)
-  }, [currentPlanId, plans, openPlan])
 
   const pickSubject = async (name: string, listed: boolean) => {
     setPickError(null)

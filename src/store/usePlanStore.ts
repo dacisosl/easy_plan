@@ -497,6 +497,18 @@ export const usePlanStore = create<State & Actions>()(
         subjects: s.subjects,
         plans: s.plans,
       }),
+      /*
+       * 쓰던 계획서로 되돌아가는 판단을 **저장분을 읽는 그 순간** 내린다.
+       *
+       * 예전에는 화면이 뜬 뒤 effect로 이어 열었는데, 그러면 첫 프레임에
+       * '계획서 없음'으로 그려져 첫 화면(파란 워시)이 반짝 보였다가 사라진다.
+       * 여기서 정하면 첫 프레임부터 갈 곳이 정해져 있어 깜빡임이 없다.
+       */
+      onRehydrateStorage: () => (state) => {
+        if (!state || state.currentPlanId || state.plans.length === 0) return
+        const latest = [...state.plans].sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
+        if (latest) state.currentPlanId = latest.id
+      },
     },
   ),
 )
