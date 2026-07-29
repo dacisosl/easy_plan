@@ -67,13 +67,6 @@ export function Home() {
    * 여기서 effect로 하면 첫 프레임이 '계획서 없음'으로 그려져 첫 화면이 반짝인다.
    */
 
-  /**
-   * 첫 화면에서 기다림을 최소한 이만큼은 보여 준다.
-   *
-   * 성취기준을 가져오는 일이 빠를 때가 많은데, 그러면 아무 일도 없었던 것처럼
-   * 화면이 툭 바뀐다. 무슨 일이 일어났는지 읽을 틈은 줘야 눌린 걸 안다.
-   */
-  const MIN_SHOW_MS = 1200
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
   const pickSubject = async (name: string, listed: boolean) => {
@@ -199,7 +192,7 @@ function HeroScreen({
           /* 물음 — 이 한마디에 고개가 끄덕여져야 다음이 읽힌다 */
           <p
             className={`text-center text-[clamp(20px,2.6vw,30px)] leading-[1.45] font-medium tracking-[-0.02em] text-ink-2 ${
-              phase === 'leaving' ? 'fade-out' : 'fade-in'
+              phase === 'leaving' ? 'stage-out' : 'fade-in'
             }`}
           >
             평가계획서 편집하느라
@@ -208,13 +201,14 @@ function HeroScreen({
           </p>
         ) : (
           <div className="w-full">
-            <div className="fade-up flex flex-col items-center pt-5">
+            <div className="stage-in flex flex-col items-center pt-5">
               <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
                 선생님, <span className="text-red">편집</span>은{' '}
                 <span className="text-navy">제가 합니다.</span>
               </h1>
-              <p className="mt-4 text-center text-[18px] text-ink-2">
-                이제 진짜 <b className="font-semibold text-ink">‘계획’</b>에만 집중해주세요.
+              {/* 이 도구가 하려는 말 — 한 글자씩 찍어 눈이 한 번 더 머물게 한다 */}
+              <p className="mt-4 min-h-[27px] text-center text-[18px] text-ink-2">
+                <Typewriter text="이제 진짜 ‘계획’에만 집중해주세요." startDelay={520} />
               </p>
 
               {/* 이 화면의 할 일은 하나 — 검색줄이 곧 시작 버튼이다 */}
@@ -265,6 +259,70 @@ function HeroScreen({
   }
 }
 
+/*
+ * 기다림 안내.
+ *
+ * 실제 걸리는 시간과 상관없이 문구 하나당 1초씩 보여 준다. 성취기준을 가져오는 일이
+ * 대개 빨라서, 진짜 시간에 맞추면 아무 일도 없던 것처럼 화면이 툭 바뀐다.
+ * 무슨 일이 있었는지 읽을 틈을 주는 편이 낫다.
+ */
+const LOADING_STEPS = ['성취기준을 가져오는 중…', '선생님을 위한 양식을 준비하는 중…']
+const LOADING_STEP_MS = 1000
+/** 문구를 다 보여 줄 만큼은 기다린다 */
+const MIN_SHOW_MS = LOADING_STEPS.length * LOADING_STEP_MS
+
+/**
+ * 한 글자씩 찍어 나가는 줄.
+ *
+ * 이 문장이 이 도구가 하려는 말이라 눈이 한 번 더 머물러야 한다.
+ * 따옴표로 묶인 부분만 굵게 — 다 찍힌 뒤가 아니라 찍히는 대로 굵어진다.
+ */
+function Typewriter({ text, startDelay = 0, speed = 55 }: {
+  text: string
+  startDelay?: number
+  speed?: number
+}) {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval>
+    const start = setTimeout(() => {
+      timer = setInterval(() => {
+        setN((i) => {
+          if (i >= text.length) {
+            clearInterval(timer)
+            return i
+          }
+          return i + 1
+        })
+      }, speed)
+    }, startDelay)
+    return () => {
+      clearTimeout(start)
+      clearInterval(timer)
+    }
+  }, [text, startDelay, speed])
+
+  const a = text.indexOf('‘')
+  const b = text.indexOf('’') + 1
+  const shown = text.slice(0, n)
+  const done = n >= text.length
+
+  return (
+    <span>
+      {a < 0 ? (
+        shown
+      ) : (
+        <>
+          {shown.slice(0, Math.min(n, a))}
+          <b className="font-semibold text-ink">{shown.slice(a, Math.min(n, b))}</b>
+          {shown.slice(Math.min(n, b))}
+        </>
+      )}
+      {!done && <span className="caret" aria-hidden />}
+    </span>
+  )
+}
+
 /**
  * 과목을 고른 뒤 잠깐의 기다림.
  *
@@ -273,18 +331,16 @@ function HeroScreen({
  * 말로 알려 주고, 막대로 '돌아가고 있음'을 보인다.
  */
 function LoadingBar() {
-  // 기다림이 1.2초라 셋을 돌리면 읽을 틈이 없다. 둘이면 각 0.6초씩 읽힌다.
-  const STEPS = ['성취기준을 가져오는 중…', '선생님을 위한 양식을 준비하는 중…']
   const [at, setAt] = useState(0)
   useEffect(() => {
-    const t = setInterval(() => setAt((i) => Math.min(i + 1, STEPS.length - 1)), 600)
+    const t = setInterval(() => setAt((i) => Math.min(i + 1, LOADING_STEPS.length - 1)), LOADING_STEP_MS)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
     <div className="fade-in flex flex-col items-center gap-3">
-      <span className="text-[15px] text-ink-2">{STEPS[at]}</span>
+      <span className="text-[15px] text-ink-2">{LOADING_STEPS[at]}</span>
       <span className="loading-bar" />
     </div>
   )

@@ -401,6 +401,59 @@
       transform: none;
     }
   }
+
+  /*
+   * 장면 전환 — 초점이 풀리며 물러나고, 초점이 잡히며 들어온다.
+   * 글자가 그냥 사라지는 것보다 '시선이 옮겨 간다'는 느낌이 난다.
+   */
+  .stage-out {
+    animation: stage-out 320ms cubic-bezier(0.4, 0, 1, 1) both;
+    pointer-events: none;
+  }
+  @keyframes stage-out {
+    from {
+      opacity: 1;
+      filter: blur(0);
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      filter: blur(10px);
+      transform: scale(0.94);
+    }
+  }
+  .stage-in {
+    animation: stage-in 700ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+  @keyframes stage-in {
+    from {
+      opacity: 0;
+      filter: blur(12px);
+      transform: translateY(22px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      filter: blur(0);
+      transform: none;
+    }
+  }
+
+  /* 타자기 커서 — 치는 동안만 깜빡인다 */
+  .caret {
+    @apply ml-0.5 inline-block w-[2px] self-stretch align-[-2px];
+    height: 1.05em;
+    background: var(--color-navy);
+    animation: caret-blink 900ms step-end infinite;
+  }
+  @keyframes caret-blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
   @keyframes fade-in {
     from {
       opacity: 0;
@@ -462,7 +515,11 @@
     opacity: 0.8;
   }
   .fade-in,
-  .fade-out {
+  .fade-out,
+  .fade-up,
+  .stage-in,
+  .stage-out,
+  .caret {
     animation: none;
   }
 }
