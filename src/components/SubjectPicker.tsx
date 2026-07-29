@@ -128,9 +128,21 @@ export function SubjectPicker({
           setOpen(true)
           setCursor(0)
         }}
-        onFocus={() => setOpen(true)}
+        /*
+         * 포커스만으로는 목록을 열지 않는다.
+         * 첫 화면은 커서를 자동으로 놓아 주는데, 그때 목록까지 펼쳐지면
+         * 누르지도 않았는데 화면이 늘어진다. 실제로 누르거나 칠 때만 연다.
+         */
+        onClick={() => setOpen(true)}
         onKeyDown={(e) => {
-          if (!open) return
+          if (!open) {
+            // 키보드만 쓰는 사람도 아래 화살표로 목록을 열 수 있어야 한다
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              setOpen(true)
+            }
+            return
+          }
           if (e.key === 'ArrowDown') {
             e.preventDefault()
             setCursor((c) => Math.min(c + 1, matches.length - 1))

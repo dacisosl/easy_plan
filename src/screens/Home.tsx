@@ -175,11 +175,11 @@ function HeroScreen({
    */
   useEffect(() => {
     if (phase === 'ask') {
-      const t = setTimeout(() => setPhase('leaving'), 1250)
+      const t = setTimeout(() => setPhase('leaving'), 2300)
       return () => clearTimeout(t)
     }
     if (phase === 'leaving') {
-      const t = setTimeout(() => setPhase('answer'), 260)
+      const t = setTimeout(() => setPhase('answer'), 380)
       return () => clearTimeout(t)
     }
   }, [phase])
@@ -220,13 +220,20 @@ function HeroScreen({
         ) : (
           <div className="w-full">
             <div className="stage-in flex flex-col items-center pt-5">
+              {/*
+               * '선생님,' 하고 한 박자 쉬었다가 나머지가 들어온다.
+               * 부르고 → 답하는 말맛이 생긴다. 자리는 미리 잡아 두므로 줄이 밀리지 않는다.
+               */}
               <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
-                선생님, <span className="text-red">편집</span>은{' '}
-                <span className="text-navy">제가 합니다.</span>
+                선생님,{' '}
+                <span className="stage-in-late inline-block">
+                  <span className="text-red">편집</span>은{' '}
+                  <span className="text-navy">제가 합니다.</span>
+                </span>
               </h1>
               {/* 이 도구가 하려는 말 — 한 글자씩 찍어 눈이 한 번 더 머물게 한다 */}
               <p className="mt-4 min-h-[27px] text-center text-[18px] text-ink-2">
-                <Typewriter text="이제 진짜 ‘계획’에만 집중해주세요." startDelay={520} />
+                <Typewriter text="이제 진짜 ‘계획’에만 집중해주세요." startDelay={1650} speed={78} />
               </p>
 
               {/* 이 화면의 할 일은 하나 — 검색줄이 곧 시작 버튼이다 */}
