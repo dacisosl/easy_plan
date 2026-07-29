@@ -281,9 +281,12 @@
    * 상단 바 간판 — 지금 어느 과목의 몇 학기를 만지고 있는지 늘 보인다.
    * 작게, 알약 모양으로. 화면 안 내용과 경쟁하지 않게 한다.
    */
-  /* 양옆 버튼(h-10)과 키를 맞춘다 — 혼자 납작하면 스티커처럼 붕 떠 보인다 */
+  /*
+   * 지금 뭘 만지고 있는지 알려 줄 뿐이라 버튼만큼 클 필요는 없다.
+   * 작게 두어야 화면 안 내용과 경쟁하지 않는다.
+   */
   .nameplate {
-    @apply flex h-10 items-center gap-2.5 rounded-full border border-line-input px-4 text-[15px] leading-none;
+    @apply flex h-7 items-center gap-2 rounded-full border border-line-input px-3 text-[12px] leading-none;
     background: var(--color-surface-sub);
   }
   /* 살아 있다는 신호 — 천천히 숨 쉬는 점 */
@@ -335,6 +338,29 @@
   }
   .search-pill:focus {
     @apply outline-none;
+  }
+
+  /*
+   * 기다림 막대 — 얼마나 남았는지는 모르니 진행률이 아니라 '돌아가고 있음'만 보인다.
+   * 파란 조각이 좌우로 오가며 멈추지 않았음을 알린다.
+   */
+  .loading-bar {
+    @apply relative block h-[3px] w-[180px] overflow-hidden rounded-full;
+    background: var(--color-navy-line);
+  }
+  .loading-bar::after {
+    content: '';
+    @apply absolute inset-y-0 w-1/3 rounded-full;
+    background: var(--color-navy);
+    animation: loading-slide 1.1s ease-in-out infinite;
+  }
+  @keyframes loading-slide {
+    0% {
+      left: -35%;
+    }
+    100% {
+      left: 100%;
+    }
   }
 
   /* 히어로 아래 근거 줄 — 숫자로 말한다 */

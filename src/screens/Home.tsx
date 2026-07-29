@@ -112,16 +112,22 @@ export function Home() {
           leaving ? 'fade-out' : 'fade-in'
         }`}
       >
-        {/* 문제를 먼저 — 이 분량을 매 학기 손으로 만졌다는 사실이 헤드라인을 받쳐 준다 */}
-        <span className="mb-5 rounded-full bg-white/70 px-3.5 py-1.5 text-[13px] text-ink-2">
-          20쪽 · 표 30개 · 문장 200줄
+        {/*
+         * 문제를 먼저 — '분량'이 아니라 '같은 값을 몇 곳에 옮겨 적는가'다.
+         * 그게 교사가 실제로 겪는 고생이고, 이 도구가 없애는 것도 그것이다.
+         * 숫자는 실제로 만든 계획서 한 부를 세어 나온 값이다(수행평가 2 · 정기 2회 기준).
+         */}
+        <span className="mb-5 rounded-full bg-white/70 px-4 py-1.5 text-[13px] text-ink-2">
+          계획서 한 부에 — 수행평가명 <b className="font-semibold text-ink">7곳</b> · 반영 비율{' '}
+          <b className="font-semibold text-ink">11곳</b> · 성취기준{' '}
+          <b className="font-semibold text-ink">49번</b>
         </span>
 
         <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
           선생님, 편집은 <span className="text-navy">제가 합니다.</span>
         </h1>
-        <p className="mt-4 text-center text-[17px] text-ink-2">
-          과목만 고르면 나머지는 채워집니다.
+        <p className="mt-4 text-center text-[18px] text-ink-2">
+          선생님은 <b className="font-semibold text-ink">학생을 위한 평가</b>에만 집중하세요.
         </p>
 
         {/* 이 화면의 할 일은 하나 — 검색줄이 곧 시작 버튼이다 */}
@@ -154,11 +160,11 @@ export function Home() {
          */}
         <div className="proof mt-6">
           <span>
-            과목 <b>231개</b>
+            <b>모든</b> 과목 작성 가능
           </span>
           <span className="text-ink-5">·</span>
           <span>
-            성취기준 <b>3,086개</b> 내장
+            <b>2022 개정</b> 성취기준 반영
           </span>
           <span className="text-ink-5">·</span>
           <span>
@@ -166,9 +172,13 @@ export function Home() {
           </span>
         </div>
 
-        <span className="mt-4 h-5 text-[13px] text-ink-3">
-          {pickError ? <span className="text-red">{pickError}</span> : loading ? '불러오는 중…' : ''}
-        </span>
+        <div className="mt-5 h-6">
+          {pickError ? (
+            <span className="text-[13px] text-red">{pickError}</span>
+          ) : (
+            loading && <LoadingBar />
+          )}
+        </div>
       </div>
     )
   }
@@ -181,6 +191,30 @@ export function Home() {
         onPickSubject={pickSubject}
         onDone={() => go('generating')}
       />
+    </div>
+  )
+}
+
+/**
+ * 과목을 고른 뒤 잠깐의 기다림.
+ *
+ * 성취기준 3,086개가 든 파일에서 그 과목만 뽑아 오는 시간이라 눈에 띈다.
+ * 아무 표시가 없으면 눌린 건지 모르고 다시 누른다 — 무슨 일을 하는 중인지
+ * 말로 알려 주고, 막대로 '돌아가고 있음'을 보인다.
+ */
+function LoadingBar() {
+  const STEPS = ['성취기준을 가져오는 중…', '단원에 맞춰 정리하는 중…', '양식을 준비하는 중…']
+  const [at, setAt] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setAt((i) => Math.min(i + 1, STEPS.length - 1)), 900)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div className="fade-in flex flex-col items-center gap-2.5">
+      <span className="text-[13.5px] text-ink-2">{STEPS[at]}</span>
+      <span className="loading-bar" />
     </div>
   )
 }
