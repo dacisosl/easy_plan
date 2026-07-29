@@ -304,6 +304,48 @@
   }
 
   /*
+   * 첫 화면 바탕 — 흰 종이에 파란 빛이 번진 느낌.
+   *
+   * 헤드라인과 검색줄이 흰 바탕 위 흰 상자면 어디를 봐야 할지 신호가 없다.
+   * 색을 칠하는 게 아니라 **바닥을 깔아** 글씨와 검색줄이 그 위에 뜨게 한다.
+   * 큰 원을 겹쳐 흐리게 두는 방식이라 blur 필터 없이도 뭉근하게 퍼진다.
+   */
+  .hero-wash {
+    background:
+      radial-gradient(46% 42% at 50% 42%, #cfe1fa 0%, rgba(207, 225, 250, 0.55) 42%, rgba(207, 225, 250, 0) 78%),
+      radial-gradient(72% 62% at 50% 40%, #e4eefc 0%, rgba(228, 238, 252, 0) 76%),
+      var(--color-bg);
+  }
+
+  /*
+   * 첫 화면 검색줄 — 이 화면의 유일한 할 일이라 크게 잡는다.
+   * 테두리 대신 그림자로 띄운다. 바탕에 색이 깔려 있어 테두리를 그으면 답답해진다.
+   */
+  .search-pill {
+    @apply h-16 w-full rounded-full border-0 bg-white pr-32 pl-14 text-[17px];
+    box-shadow: 0 1px 2px rgba(20, 40, 80, 0.06), 0 8px 28px rgba(20, 40, 80, 0.1);
+    transition: box-shadow 160ms ease;
+  }
+  .search-pill::placeholder {
+    @apply text-ink-3;
+  }
+  .search-pill:hover,
+  .search-pill:focus {
+    box-shadow: 0 1px 2px rgba(20, 40, 80, 0.08), 0 12px 34px rgba(20, 40, 80, 0.16);
+  }
+  .search-pill:focus {
+    @apply outline-none;
+  }
+
+  /* 히어로 아래 근거 줄 — 숫자로 말한다 */
+  .proof {
+    @apply flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[13.5px] text-ink-3;
+  }
+  .proof b {
+    @apply font-semibold text-ink-2;
+  }
+
+  /*
    * 화면 전환 — 과목을 고르면 고르기 화면이 물러나고 작성 화면이 올라온다.
    * 페이지가 툭 바뀌지 않게 하려는 것뿐이라 짧게 끊는다.
    */

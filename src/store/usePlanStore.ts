@@ -13,7 +13,7 @@ import type {
 import { SCHOOL_SEED } from '@/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '@/data/subject'
 import { distributeStandards, orderedStandardCodes, weeksOf } from '@/lib/derive'
-import { buildPerformance } from '@/lib/autofill'
+import { buildPerformance, splitPerfRatios } from '@/lib/autofill'
 import type { ImportedSubject } from '@/lib/importStandards'
 import { unitsFromAreas } from '@/lib/importStandards'
 
@@ -82,6 +82,11 @@ interface Actions {
   }) => void
   patchPerf: (id: string, patch: Partial<Performance>) => void
   removePerf: (id: string) => void
+  /**
+   * 수행평가 몫을 개수대로 다시 나눈다.
+   * **추가·삭제할 때만** 부른다 — 교사가 손으로 고친 값을 덮으면 안 된다.
+   */
+  rebalancePerfRatios: () => void
 
   setAiDraft: (ai: AiDraft) => void
 }
@@ -368,6 +373,35 @@ export const usePlanStore = create<State & Actions>()(
         if (!plan) return
         get().patchPlan({
           performances: plan.performances.filter((p) => p.id !== id),
+          ai: undefined,
+        })
+        get().rebalancePerfRatios()
+      },
+
+      rebalancePerfRatios: () => {
+        const plan = get().current()
+        if (!plan || plan.performances.length === 0) return
+        const { ratios } = splitPerfRatios(
+          plan.perf_ratio,
+          plan.performances.length,
+          get().school.rules.perf_area_max,
+        )
+        const next = plan.performances.map((p, i) => ({ ...p, ratio: ratios[i] ?? p.ratio }))
+        // 만점·기본점수가 비율에서 나오므로 buildPerformance를 다시 태운다
+        get().patchPlan({
+          performances: next.map((p) =>
+            buildPerformance({
+              id: p.id,
+              name: p.name,
+              intent: p.intent ?? p.activity,
+              ratio: p.ratio,
+              week: p.week,
+              school: get().school,
+              distribution: plan.distribution,
+              standardCodes: p.standards_manual ? p.standard_codes : null,
+              essayRatio: p.essay_ratio ?? null,
+            }),
+          ),
           ai: undefined,
         })
       },

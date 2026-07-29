@@ -74,7 +74,59 @@ export function splitPerfRatios(
   areaMax: number,
 ): { ratios: number[]; needed: number } {
   const needed = Math.max(1, count, Math.ceil(total / Math.max(1, areaMax)))
-  return { ratios: splitScore(total, needed).map((r) => Math.min(r, areaMax)), needed }
+  return { ratios: allocatePerfRatios(total, needed, areaMax), needed }
+}
+
+/**
+ * 수행평가 반영 비율을 개수대로 나눈다.
+ *
+ * 학교 문서는 비율을 **10% 단위**로 적는다. 그래서 그냥 등분하면
+ * 40%를 셋으로 나눈 13.3% 같은 숫자가 나와 실제로 쓰지 않는 값이 된다.
+ * 10 단위로 내려 깔고 남는 몫을 앞에서부터 10씩 얹는다.
+ *
+ *   40% · 1개 → 40
+ *   40% · 2개 → 20 20
+ *   40% · 3개 → 20 10 10
+ *  100% · 3개 → 40 30 30   (한 영역 상한이 걸리면 35 35 30 으로 눌린다)
+ *
+ * 상한(perf_area_max)을 넘는 몫은 다음 영역으로 넘긴다 — 버리면 합이 모자란다.
+ */
+export function allocatePerfRatios(total: number, count: number, areaMax: number): number[] {
+  const n = Math.max(1, count)
+  if (total <= 0) return Array(n).fill(0)
+
+  const STEP = 10
+  const base = Math.floor(total / n / STEP) * STEP
+
+  // 10씩 나눌 수 없을 만큼 잘게 쪼개야 하면(예: 40%를 5개로) 그냥 고르게 나눈다
+  if (base === 0) return splitScore(total, n)
+
+  const out: number[] = Array(n).fill(base)
+  // 남는 몫은 앞에서부터 10씩 얹는다
+  let rest = total - base * n
+  for (let i = 0; i < n && rest > 0; i++) {
+    const add = Math.min(STEP, rest)
+    out[i] += add
+    rest -= add
+  }
+
+  // 상한을 넘은 몫은 여유 있는 영역으로 흘려보낸다
+  for (let i = 0; i < n; i++) {
+    if (out[i] <= areaMax) continue
+    let over = out[i] - areaMax
+    out[i] = areaMax
+    for (let j = 0; j < n && over > 0; j++) {
+      if (j === i) continue
+      // 이미 상한을 넘은 칸은 여유가 없다 — 음수가 되면 오히려 빼앗아 간다
+      const room = Math.max(0, areaMax - out[j])
+      const give = Math.min(room, over)
+      out[j] += give
+      over -= give
+    }
+    // 옮길 자리가 없으면 상한보다 합계를 지킨다 — 모자란 합은 규칙 검사에서 잡는다
+    out[i] += over
+  }
+  return out
 }
 
 const ELEMENT_BY_CHECK: Record<PerfMethodCheck, { area: string; element: string; verbs: [string, string, string] }> = {

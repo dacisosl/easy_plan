@@ -39,9 +39,15 @@ export function AppHeader() {
     (s) => s.school.calendars.find((c) => c.semester === plan?.semester)?.year,
   )
 
+  /* 첫 화면은 바탕에 파란 빛이 깔려 있다 — 흰 띠를 얹으면 그 위에 선이 하나 그어진다 */
+  const onHero = screen === 'home' && !currentPlanId
+
   return (
-    <header className="sticky top-0 z-10 border-b border-line-soft bg-white">
-      <div className="mx-auto flex h-14 max-w-[1200px] items-center justify-between px-6">
+    <header
+      className={`sticky top-0 z-10 ${onHero ? 'bg-transparent' : 'border-b border-line-soft bg-white'}`}
+    >
+      {/* 폭을 본문과 같게 — 로고가 입력 상자 왼쪽 모서리, 버튼이 오른쪽 모서리에 맞는다 */}
+      <div className="mx-auto flex h-16 max-w-[880px] items-center justify-between px-6">
         <button
           className="flex cursor-pointer items-center gap-2.5 border-0 bg-transparent"
           onClick={() => go('home')}

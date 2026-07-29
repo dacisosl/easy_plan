@@ -21,7 +21,7 @@ import {
   perfEssayTotal,
   weeksOf,
 } from '@/lib/derive'
-import { methodsFromIntent, splitPerfRatios } from '@/lib/autofill'
+import { methodsFromIntent } from '@/lib/autofill'
 import { validate } from '@/lib/validate'
 import type { ExamPart, FocusTarget, SemesterPlan, Subject } from '@/types'
 
@@ -108,42 +108,65 @@ export function Home() {
   if (!plan || !subject) {
     return (
       <div
-        className={`flex min-h-[calc(100vh-14rem)] flex-col items-center justify-center gap-4 ${
+        className={`flex min-h-[calc(100vh-11rem)] flex-col items-center justify-center ${
           leaving ? 'fade-out' : 'fade-in'
         }`}
       >
-        {/*
-         * 첫인상 한 줄 — 역할 분담을 약속한다.
-         * 큰 줄이 감정(내가 대신 한다), 작은 줄이 근거(20쪽·입력 한 번)를 맡는다.
-         */}
-        <div className="mb-7 flex flex-col items-center gap-3 text-center">
-          <h1 className="text-[38px] leading-[1.25] font-bold tracking-[-0.03em]">
-            선생님, <span className="text-navy">편집은 제가 할게요.</span>
-          </h1>
-          <p className="text-[16px] text-ink-2">
-            평가 기획만 해주세요 — 20쪽 운영계획서, 입력은 한 번이면 됩니다.
-          </p>
-        </div>
-        <section
-          id="fs-basic"
-          className="flex items-center gap-4 rounded-box border border-line-card bg-surface-sub px-5 py-4"
-        >
-          <h2 className="shrink-0 text-[15px] font-semibold">과목</h2>
-          <div className="w-[420px]">
-            <SubjectPicker value="" onPick={pickSubject} autoFocus onDraftChange={setDraft} />
-          </div>
-          {/* 쓰기 시작하면 나타난다 — Enter로도 같은 값이 확정된다 */}
-          {draft && (
-            <button
-              className="btn btn-sm btn-accent shrink-0 fade-in"
-              disabled={loading}
-              onClick={() => pickSubject(draft.name, draft.listed)}
-            >
-              작성 시작 →
-            </button>
-          )}
+        {/* 문제를 먼저 — 이 분량을 매 학기 손으로 만졌다는 사실이 헤드라인을 받쳐 준다 */}
+        <span className="mb-5 rounded-full bg-white/70 px-3.5 py-1.5 text-[13px] text-ink-2">
+          20쪽 · 표 30개 · 문장 200줄
+        </span>
+
+        <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
+          선생님, 편집은 <span className="text-navy">제가 합니다.</span>
+        </h1>
+        <p className="mt-4 text-center text-[17px] text-ink-2">
+          과목만 고르면 나머지는 채워집니다.
+        </p>
+
+        {/* 이 화면의 할 일은 하나 — 검색줄이 곧 시작 버튼이다 */}
+        <section id="fs-basic" className="mt-9 w-full max-w-[660px]">
+          <SubjectPicker
+            value=""
+            onPick={pickSubject}
+            autoFocus
+            hero
+            onDraftChange={setDraft}
+            placeholder="과목명을 입력하세요 — 예) 대수, 통합사회1"
+            right={
+              draft && (
+                <button
+                  className="btn btn-accent fade-in h-11 rounded-full px-5"
+                  disabled={loading}
+                  onClick={() => pickSubject(draft.name, draft.listed)}
+                >
+                  시작 →
+                </button>
+              )
+            }
+          />
         </section>
-        <span className="h-5 text-[13px] text-ink-3">
+
+        {/*
+         * 숫자는 지어내지 않는다. data/고등학교_성취기준_2022.xlsx 를 실제로 세어 나온 값이다
+         * ('고급' 과목 8개를 뺀 뒤 231개 과목 · 성취기준 3,086개).
+         * 파일이 바뀌면 scripts로 다시 세서 고칠 것.
+         */}
+        <div className="proof mt-6">
+          <span>
+            과목 <b>231개</b>
+          </span>
+          <span className="text-ink-5">·</span>
+          <span>
+            성취기준 <b>3,086개</b> 내장
+          </span>
+          <span className="text-ink-5">·</span>
+          <span>
+            <b>한글 파일</b> 그대로
+          </span>
+        </div>
+
+        <span className="mt-4 h-5 text-[13px] text-ink-3">
           {pickError ? <span className="text-red">{pickError}</span> : loading ? '불러오는 중…' : ''}
         </span>
       </div>
@@ -173,7 +196,8 @@ function PlanForm({
   onPickSubject: (name: string, listed: boolean) => void
   onDone: () => void
 }) {
-  const { school, patchPlan, upsertPerf, redistribute, focusTarget, clearFocus } = usePlanStore()
+  const { school, patchPlan, upsertPerf, rebalancePerfRatios, redistribute, focusTarget, clearFocus } =
+    usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))!
   const subject = usePlanStore((s) => {
     const p = s.plans.find((x) => x.id === s.currentPlanId)!
@@ -353,25 +377,6 @@ function PlanForm({
   }
 
   /** 수행평가 비율 합이 배정액과 맞고, 한 영역이 상한을 넘지 않게 다시 나눈다 */
-  const rebalancePerfRatios = () => {
-    const current = usePlanStore.getState().plans.find((p) => p.id === plan.id)
-    if (!current || current.performances.length === 0) return
-    const { ratios } = splitPerfRatios(
-      current.perf_ratio,
-      current.performances.length,
-      school.rules.perf_area_max,
-    )
-    current.performances.forEach((p, i) => {
-      if (p.ratio === ratios[i]) return
-      upsertPerf({
-        id: p.id,
-        name: p.name,
-        intent: p.intent ?? p.activity ?? '',
-        week: p.week,
-        ratio: ratios[i],
-      })
-    })
-  }
 
   const setAnchor = (no: number, code: string) => {
     patchPlan({
@@ -398,6 +403,8 @@ function PlanForm({
     const taken = new Set(plan.performances.map((p) => p.week))
     const week = teachWeeks.find((w) => !taken.has(w.no) && w.no > 2)?.no ?? teachWeeks[0]?.no ?? 3
     upsertPerf({ name: '', intent: '', week })
+    // 개수가 바뀌면 몫을 다시 나눈다 — 40% 하나가 20/20, 20/10/10으로 갈린다
+    setTimeout(rebalancePerfRatios, 0)
   }
 
   /* ── 서술·논술형 ──────────────────────────── */

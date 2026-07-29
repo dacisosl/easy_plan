@@ -22,6 +22,8 @@ export function SubjectPicker({
   placeholder = '과목명 검색 — 예) 대수, 통합사회1',
   autoFocus,
   onDraftChange,
+  hero = false,
+  right,
 }: {
   value: string
   /** listed = 성취기준 파일에 있는 과목인지 */
@@ -30,6 +32,10 @@ export function SubjectPicker({
   autoFocus?: boolean
   /** 바깥에 '작성 시작' 버튼을 두고 싶을 때 — Enter와 같은 값을 넘겨준다 */
   onDraftChange?: (draft: SubjectDraft | null) => void
+  /** 첫 화면용 큰 검색줄 — 높고 넓고 둥글게 */
+  hero?: boolean
+  /** 검색줄 안쪽 오른쪽에 넣을 것 (시작 버튼) */
+  right?: React.ReactNode
 }) {
   const [names, setNames] = useState<string[] | null>(null)
   const [query, setQuery] = useState(value)
@@ -95,9 +101,11 @@ export function SubjectPicker({
     <div ref={rootRef} className="relative">
       {/* 돋보기 — 여기가 '찾는 칸'이라는 걸 글로 설명하지 않아도 알게 한다 */}
       <svg
-        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-4"
-        width="16"
-        height="16"
+        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-ink-4 ${
+          hero ? 'left-6' : 'left-3'
+        }`}
+        width={hero ? 20 : 16}
+        height={hero ? 20 : 16}
         viewBox="0 0 16 16"
         fill="none"
         stroke="currentColor"
@@ -107,8 +115,11 @@ export function SubjectPicker({
         <circle cx="7" cy="7" r="4.5" />
         <path d="M10.5 10.5 L14 14" strokeLinecap="round" />
       </svg>
+      {right && (
+        <div className="absolute top-1/2 right-2.5 z-10 -translate-y-1/2">{right}</div>
+      )}
       <input
-        className="control pl-9"
+        className={hero ? 'search-pill' : 'control pl-9'}
         value={query}
         placeholder={placeholder}
         autoFocus={autoFocus}
@@ -137,7 +148,11 @@ export function SubjectPicker({
       />
 
       {open && (query.trim() !== '' || matches.length > 0) && (
-        <div className="absolute top-full right-0 left-0 z-20 mt-1 max-h-72 overflow-y-auto rounded-control border border-line bg-white py-1">
+        <div
+          className={`absolute top-full right-0 left-0 z-20 max-h-72 overflow-y-auto border border-line bg-white py-1 ${
+            hero ? 'mt-2 rounded-box shadow-[0_10px_30px_rgba(20,40,80,0.10)]' : 'mt-1 rounded-control'
+          }`}
+        >
           {names === null && (
             <div className="px-3 py-2 text-sm text-ink-3">과목 목록을 불러오는 중…</div>
           )}
