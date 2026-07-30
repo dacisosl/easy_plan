@@ -12,7 +12,7 @@
  * 승인을 안 받은 사람은 빨간 글씨가 고정 문구로 나올 뿐이다.
  */
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { signOutEverywhere } from '@/lib/firebase/client'
 
 export interface Me {
@@ -20,7 +20,20 @@ export interface Me {
   email?: string
   displayName?: string | null
   approved?: boolean
+  admin?: boolean
   authDisabled?: boolean
+}
+
+/**
+ * 지금 들어온 사람 — 한 번만 물어보고 화면 전체가 같은 답을 본다.
+ *
+ * 화면마다 `/api/me`를 다시 부르면 답이 엇갈릴 수 있고(승인 직후 같은 순간),
+ * 무엇보다 같은 값을 두 곳에서 들고 있게 된다.
+ */
+const MeContext = createContext<Me | null>(null)
+
+export function useMe(): Me | null {
+  return useContext(MeContext)
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -52,7 +65,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       <NameStep email={me.email ?? ''} onDone={(name) => setMe({ ...me, displayName: name })} />
     )
   }
-  return <>{children}</>
+  return <MeContext.Provider value={me}>{children}</MeContext.Provider>
 }
 
 /** 처음 들어온 사람에게 표시 이름을 받는다 */

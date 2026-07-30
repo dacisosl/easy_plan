@@ -42,5 +42,12 @@ env:
     value: anthropic/claude-sonnet-4.5
     availability: [RUNTIME]
 
+  # 관리자 명단 — 쉼표로 나열한다. 여기 적힌 사람은 승인 없이 바로 관리자이고,
+  # 앱 안 '관리자 → 사용자 승인'에서 남을 승인해 줄 수 있다.
+  # 데이터베이스에만 두면 첫 관리자를 만들 길이 없어서 설정값으로 둔다.
+  - variable: ADMIN_EMAILS
+    value: dunaro.gogo@gmail.com
+    availability: [RUNTIME]
+
   # 서비스 계정 키는 여기 없다. 구글 서버 안에서는 컨테이너가 자기 신분증을 이미
   # 들고 있어서(ADC) admin.ts가 그걸 집어 쓴다. 비밀을 안 옮기는 게 가장 안전하다.

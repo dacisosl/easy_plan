@@ -6,17 +6,19 @@
  *  ① 학사일정: 학기별 주차(시작·종료·수업일수·행사·정기시험 주)
  *  ② 예정시간 배포표: 주당 이수시간별 주차 예정시간 — 양식 메모7이 요구하는 값
  *  ③ 학교 규칙: 새 계획서의 기본값
+ *  ④ 사용자 승인: 누구에게 AI 문안을 열어 줄지 (관리자에게만 보인다)
  *
  * 여기 값이 바뀌면 진도 배분·월 주차 라벨·진도표 예정시간이 전부 따라 움직인다.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Screen } from '@/components/ui'
+import { useMe } from '@/components/AuthGate'
 import { usePlanStore } from '@/store/usePlanStore'
 import { scheduledHours, weeksOf } from '@/lib/derive'
 import type { AcademicCalendar, Week } from '@/types'
 
-type Tab = 'calendar' | 'hours' | 'rules'
+type Tab = 'calendar' | 'hours' | 'rules' | 'users'
 
 const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'calendar', label: '학사일정', hint: '주차 · 수업일수 · 정기시험 주' },
@@ -24,13 +26,19 @@ const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'rules', label: '학교 규칙', hint: '새 계획서의 기본값' },
 ]
 
+const USERS_TAB = { id: 'users' as Tab, label: '사용자 승인', hint: 'AI 문안을 쓸 사람 정하기' }
+
 /** 배포표에서 다룰 주당 이수시간 */
 const CREDITS = [1, 2, 3, 4, 5]
 
 export function Admin() {
   const { school, patchSchool, go } = usePlanStore()
+  const me = useMe()
   const [tab, setTab] = useState<Tab>('calendar')
   const [semester, setSemester] = useState<1 | 2>(1)
+
+  // 승인 탭은 관리자에게만 보인다. 숨기는 것은 예의일 뿐이고, 실제 자물쇠는 서버에 있다
+  const tabs = me?.admin ? [...TABS, USERS_TAB] : TABS
 
   const patchCalendar = (next: AcademicCalendar) =>
     patchSchool({
@@ -53,8 +61,8 @@ export function Admin() {
         </button>
       }
     >
-      <div className="flex gap-1 border-b border-line-soft">
-        {TABS.map((t) => (
+      <div className="flex gap-1 overflow-x-auto border-b border-line-soft">
+        {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
@@ -81,6 +89,7 @@ export function Admin() {
       )}
       {tab === 'hours' && <HoursTab />}
       {tab === 'rules' && <RulesTab />}
+      {tab === 'users' && <UsersTab myUid={me?.uid ?? ''} />}
     </Screen>
   )
 }
@@ -132,7 +141,10 @@ function CalendarTab({
         </label>
         <span className="text-[13px] text-ink-3">
           전체 {cal.weeks.length}주 · 수업 {teaching}주 · 정기시험{' '}
-          {cal.weeks.filter((w) => w.is_exam).map((w) => `${w.no}주`).join(', ') || '없음'}
+          {cal.weeks
+            .filter((w) => w.is_exam)
+            .map((w) => `${w.no}주`)
+            .join(', ') || '없음'}
         </span>
       </div>
 
@@ -177,7 +189,10 @@ function CalendarTab({
               placeholder="—"
               onChange={(e) =>
                 onPatchWeek(w.no, {
-                  events: e.target.value.split(',').map((x) => x.trim()).filter(Boolean),
+                  events: e.target.value
+                    .split(',')
+                    .map((x) => x.trim())
+                    .filter(Boolean),
                 })
               }
             />
@@ -296,7 +311,9 @@ function HoursTab() {
           </tbody>
         </table>
       </div>
-      <p className="hint">회색 숫자는 계산값입니다. 칸을 고치면 그 시수 줄 전체가 배포표 값이 됩니다.</p>
+      <p className="hint">
+        회색 숫자는 계산값입니다. 칸을 고치면 그 시수 줄 전체가 배포표 값이 됩니다.
+      </p>
     </div>
   )
 }
@@ -384,6 +401,133 @@ function RulesTab() {
           같은 주라도 라벨이 한 주씩 밀립니다 — 담당자 확인이 필요한 항목입니다.
         </span>
       </label>
+    </div>
+  )
+}
+
+/* ── ④ 사용자 승인 ────────────────────────────── */
+
+interface UserRow {
+  uid: string
+  email: string
+  displayName: string | null
+  googleName: string | null
+  approved: boolean
+  admin: boolean
+  lastSeenAt: string | null
+  approvedBy: string | null
+}
+
+/** '7월 30일 오후 2:15' 정도로 — 연도까지 적으면 표가 시끄럽다 */
+function whenLabel(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`
+}
+
+/**
+ * 들어온 사람들을 보여 주고 AI 문안 사용을 열어 준다.
+ *
+ * 승인은 '들어오는 문'이 아니다 — 승인 없이도 계획서를 짜고 한글 파일을 받을 수 있다.
+ * 이 스위치가 여는 것은 학교 예산으로 도는 AI 문안 하나다. 화면에도 그렇게 적어 둔다.
+ */
+function UsersTab({ myUid }: { myUid: string }) {
+  const [users, setUsers] = useState<UserRow[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  /** 지금 저장 중인 사람 — 버튼을 두 번 누르는 것을 막는다 */
+  const [busyUid, setBusyUid] = useState<string | null>(null)
+
+  const load = () => {
+    fetch('/api/admin/users')
+      .then(async (r) => {
+        const b = (await r.json()) as { users?: UserRow[]; error?: string }
+        if (!r.ok) throw new Error(b.error ?? '명단을 가져오지 못했습니다')
+        return b.users ?? []
+      })
+      .then(setUsers)
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : '명단을 가져오지 못했습니다'),
+      )
+  }
+
+  useEffect(load, [])
+
+  const toggle = async (u: UserRow) => {
+    setError(null)
+    setBusyUid(u.uid)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: u.uid, approved: !u.approved }),
+      })
+      const b = (await res.json()) as { users?: UserRow[]; error?: string }
+      if (!res.ok) throw new Error(b.error ?? '저장하지 못했습니다')
+      setUsers(b.users ?? [])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '저장하지 못했습니다')
+    } finally {
+      setBusyUid(null)
+    }
+  }
+
+  if (error) {
+    return (
+      <p className="rounded-control border border-red-line bg-red-bg px-4 py-3 text-[13.5px] leading-relaxed text-red-ink">
+        {error}
+      </p>
+    )
+  }
+  if (!users) return <p className="hint">명단을 가져오는 중…</p>
+
+  const waiting = users.filter((u) => !u.approved).length
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="hint max-w-[620px] leading-relaxed">
+        승인은 <b>AI 문안</b>을 쓸 수 있게 하는 것입니다. 승인하지 않아도 계획서를 만들고 한글
+        파일로 내려받는 일은 됩니다 — 빨간 글씨가 고정 문구로 나올 뿐입니다.
+        {waiting > 0 && <> 지금 {waiting}명이 기다립니다.</>}
+      </p>
+
+      <div className="flex flex-col divide-y divide-line-soft rounded-control border border-line-soft">
+        {users.length === 0 && <p className="hint px-4 py-6 text-center">아직 아무도 없습니다.</p>}
+
+        {users.map((u) => (
+          <div key={u.uid} className="flex items-center gap-3 px-4 py-3">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-[14.5px] font-medium text-ink">
+                {u.displayName ?? u.googleName ?? '이름 미정'}
+                {u.admin && <span className="ml-2 text-[12px] font-normal text-navy">관리자</span>}
+                {u.uid === myUid && (
+                  <span className="ml-2 text-[12px] font-normal text-ink-3">나</span>
+                )}
+              </span>
+              <span className="truncate text-[12.5px] text-ink-3">
+                {u.email} · 최근 {whenLabel(u.lastSeenAt)}
+                {u.approvedBy && ` · ${u.approvedBy} 승인`}
+              </span>
+            </div>
+
+            {u.admin ? (
+              // 관리자는 스위치가 없다 — 끌 수 없는 스위치를 보여 주면 눌러 보게 된다
+              <span className="shrink-0 text-[12.5px] text-ink-3">항상 사용</span>
+            ) : (
+              <button
+                className={`btn btn-sm shrink-0 ${u.approved ? 'btn-ghost' : ''}`}
+                disabled={busyUid === u.uid}
+                onClick={() => toggle(u)}
+              >
+                {busyUid === u.uid ? '…' : u.approved ? '해제' : '승인'}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <button className="btn btn-sm btn-ghost self-start" onClick={load}>
+        다시 불러오기
+      </button>
     </div>
   )
 }
