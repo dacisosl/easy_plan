@@ -41,7 +41,7 @@ npm install
 ```
 
 ```bash
-cp .env.example .env && npx prisma generate
+cp .env.example .env
 ```
 
 ```bash
@@ -50,6 +50,22 @@ npm run dev
 
 `.env`의 `OPENROUTER_API_KEY`를 채우면 AI 문안이 실제 모델로 생성된다.
 **키가 없어도 동작한다** — 결정적 대체 문구(fallback)로 완결되고, 문서에 표시된다.
+
+Firebase 값도 **비워 둬도 된다.** 비어 있으면 로그인을 걸지 않는다 — 화면을 만지는
+동안 매번 구글 창을 띄우게 만들 이유가 없다.
+
+## 배포 — Firebase App Hosting
+
+일반 Hosting이 아니다. 이 앱은 서버가 일한다(한글 파일 조립 · 엑셀 읽기 · 쿠키 검증).
+설정은 [`apphosting.yaml`](apphosting.yaml)에 있고, `main`에 push하면 다시 올라간다.
+
+```bash
+firebase apphosting:secrets:set openrouter-api-key
+```
+
+서비스 계정 키는 배포 환경에 넣지 않는다. 구글 서버 안에서는 컨테이너가 자기
+신분증을 이미 들고 있어서(ADC) [`admin.ts`](src/lib/firebase/admin.ts)가 그걸 집어 쓴다.
+`FIREBASE_SERVICE_ACCOUNT`는 **로컬 개발용**이다.
 
 > `next dev`가 돌고 있는 동안 `npm run build`를 실행하지 말 것. 같은 `.next`를 써서
 > 청크가 섞인다. 이미 났으면 dev를 멈추고 `.next`를 지운 뒤 다시 띄우면 된다.

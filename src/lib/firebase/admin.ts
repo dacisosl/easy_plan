@@ -48,14 +48,27 @@ function serviceAccount(): { projectId: string; clientEmail: string; privateKey:
   }
 }
 
+/**
+ * 구글 서버(App Hosting = Cloud Run) 안에서 돌고 있는가.
+ *
+ * 그렇다면 열쇠를 우리가 들고 다닐 필요가 없다. 컨테이너에 이미 신분증이 붙어 있고
+ * (Application Default Credentials) `initializeApp()`이 그걸 알아서 집는다.
+ * 비밀을 옮기지 않는 것이 가장 안전하게 옮기는 방법이다.
+ *
+ * `K_SERVICE`는 Cloud Run이 넣어 주는 표시다.
+ */
+const onGoogleCloud = Boolean(process.env.K_SERVICE ?? process.env.GOOGLE_CLOUD_PROJECT)
+
 /** 서버 쪽 설정이 갖춰졌는지 — 없으면 로그인을 걸지 않는다(로컬 개발) */
-export const adminReady = serviceAccount() !== null
+export const adminReady = serviceAccount() !== null || onGoogleCloud
 
 function adminApp(): App {
   if (getApps().length) return getApp()
+  // 넣어 준 열쇠가 있으면 그것을 먼저 쓴다 — 로컬에서, 또는 다른 서버에 올릴 때
   const sa = serviceAccount()
-  if (!sa) throw new Error('FIREBASE_SERVICE_ACCOUNT 가 없습니다')
-  return initializeApp({ credential: cert(sa) })
+  if (sa) return initializeApp({ credential: cert(sa) })
+  if (onGoogleCloud) return initializeApp()
+  throw new Error('FIREBASE_SERVICE_ACCOUNT 가 없습니다')
 }
 
 /** 쿠키 이름 — 미들웨어도 이 이름만 보고 문을 지킨다 */
