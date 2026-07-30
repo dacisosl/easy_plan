@@ -12,7 +12,13 @@ import type {
 } from '@/types'
 import { SCHOOL_SEED } from '@/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '@/data/subject'
-import { distributeStandards, orderedStandardCodes, perfAreaCap, weeksOf } from '@/lib/derive'
+import {
+  distributeStandards,
+  orderedStandardCodes,
+  perfAreaCap,
+  perfProgressFingerprint,
+  weeksOf,
+} from '@/lib/derive'
 import { allocatePerfRatios, autoStandardCodes, buildPerformance } from '@/lib/autofill'
 import type { ImportedSubject } from '@/lib/importStandards'
 import { unitsFromAreas } from '@/lib/importStandards'
@@ -92,6 +98,8 @@ interface Actions {
   rebalancePerfRatios: () => void
 
   setAiDraft: (ai: AiDraft) => void
+  /** 규칙 16의 '확인했습니다' — 지금 상태의 지문을 저장한다 */
+  confirmPerfProgress: () => void
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10)
@@ -464,6 +472,17 @@ export const usePlanStore = create<State & Actions>()(
       },
 
       setAiDraft: (ai) => get().patchPlan({ ai }),
+
+      /*
+       * "수행평가 성취기준과 교과진도계획 확인하셨나요?"의 확인.
+       * 지금 상태의 지문을 저장한다 — 성취기준·시기·진도가 바뀌면 지문이 어긋나
+       * 확인이 저절로 풀린다.
+       */
+      confirmPerfProgress: () => {
+        const plan = get().current()
+        if (!plan) return
+        get().patchPlan({ perf_progress_ack: perfProgressFingerprint(plan) })
+      },
     }),
     {
       name: 'easy-plan',

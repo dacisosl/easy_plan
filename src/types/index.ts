@@ -264,13 +264,7 @@ export interface RubricRow {
 }
 
 export type PerfMethodCheck =
-  | '서술·논술'
-  | '구술·발표'
-  | '토의·토론'
-  | '프로젝트'
-  | '실험·실습'
-  | '포트폴리오'
-  | '기타'
+  '서술·논술' | '구술·발표' | '토의·토론' | '프로젝트' | '실험·실습' | '포트폴리오' | '기타'
 
 /** 3-3. 수행평가 */
 export interface Performance {
@@ -387,5 +381,11 @@ export interface SemesterPlan {
   human_checks?: Record<string, boolean>
   /** AI 초안 — export 시 생성·저장 */
   ai?: AiDraft
+  /**
+   * "수행평가 성취기준과 교과진도계획 확인하셨나요?"에 확인을 누른 시점의
+   * 상태 지문(perfProgressFingerprint). 성취기준·실시 시기·진도가 바뀌면 지문이
+   * 달라져 확인이 자동으로 풀린다 — 한 번 누른 확인이 영원히 유효하면 무의미하다.
+   */
+  perf_progress_ack?: string
   updated_at: string
 }

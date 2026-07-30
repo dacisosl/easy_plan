@@ -437,6 +437,21 @@ export function essayExempt(plan: Pick<SemesterPlan, 'credit' | 'perf_ratio'>): 
   return plan.credit === 1 || plan.perf_ratio >= 80
 }
 
+/**
+ * '수행평가 성취기준 ↔ 진도' 확인(규칙 16)이 가리키는 상태의 지문.
+ *
+ * 확인 버튼은 이 지문과 함께 저장된다. 성취기준·실시 시기·진도 중 하나라도
+ * 바뀌면 지문이 달라져 확인이 자동으로 풀린다.
+ */
+export function perfProgressFingerprint(
+  plan: Pick<SemesterPlan, 'distribution' | 'performances'>,
+): string {
+  return JSON.stringify({
+    d: Object.entries(plan.distribution).sort(([a], [b]) => Number(a) - Number(b)),
+    p: plan.performances.map((p) => [p.id, p.week, [...p.standard_codes].sort()]),
+  })
+}
+
 /** 반영 비율 합계 — 정기시험 + 수행평가 전 영역 */
 export function ratioTotal(plan: SemesterPlan, examRatio: number): number {
   const perf = plan.performances.reduce((s, p) => s + p.ratio, 0)

@@ -14,7 +14,7 @@ import { weeksOf } from '@/lib/derive'
 import { generateDraft } from '@/lib/generateClient'
 
 export function Download() {
-  const { school, go, setAiDraft, focusOn } = usePlanStore()
+  const { school, go, setAiDraft, focusOn, confirmPerfProgress } = usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))
   const subject = usePlanStore((s) => {
     const p = s.plans.find((x) => x.id === s.currentPlanId)
@@ -123,12 +123,23 @@ export function Download() {
                 <span className="text-[15px] font-semibold text-red">{e.title}</span>
                 <span className="text-[13px] text-red-ink">{e.detail}</span>
               </div>
-              <button
-                className="btn btn-sm btn-danger shrink-0"
-                onClick={() => focusOn(e.target ?? 'perf')}
-              >
-                고치기
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  className="btn btn-sm btn-danger"
+                  onClick={() => focusOn(e.target ?? 'perf')}
+                >
+                  고치기
+                </button>
+                {/*
+                 * 규칙 16만 '확인'으로 넘어갈 수 있다 — 진도를 실제와 다르게 적는
+                 * 학교도 있어 사람의 판단에 맡긴다. 확인은 지금 상태에만 유효하다.
+                 */}
+                {e.confirmable && (
+                  <button className="btn btn-sm" onClick={confirmPerfProgress}>
+                    확인했습니다
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

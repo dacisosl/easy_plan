@@ -13,6 +13,7 @@ import {
   monthWeekLabel,
   noticeWeek,
   perfAreaCap,
+  perfProgressFingerprint,
   ratioTotal,
   rubricMax,
   teachingWeeks,
@@ -34,6 +35,13 @@ export interface Issue {
   target?: FocusTarget
   /** 대상 수행평가 id */
   perfId?: string
+  /**
+   * 고치는 대신 '확인했습니다'로 넘어갈 수 있는 문제.
+   * 규칙 16(수행 성취기준 ↔ 진도) — 진도를 실제와 다르게 적는 학교도 있어
+   * 사람의 판단으로 통과시킬 길을 남긴다. 확인은 상태 지문과 함께 저장돼
+   * 값이 바뀌면 다시 묻는다.
+   */
+  confirmable?: boolean
 }
 
 export interface ValidationResult {
@@ -269,33 +277,42 @@ export function validate(
     }
   }
 
-  /* 16. 수행평가 성취기준이 실시 주까지의 진도에 포함 — 점검표 "실시일까지 진도가 나갔는지" */
-  for (const p of plan.performances) {
-    const taught = new Set(
-      Object.entries(plan.distribution)
-        .filter(([wk]) => Number(wk) <= p.week)
-        .flatMap(([, codes]) => codes),
-    )
-    // distribution 어디에도 없는 코드는 규칙 10의 몫 — 여기서 또 알리면 이중 보고다
-    const late = p.standard_codes.filter((c) => !taught.has(c) && placedCodes.has(c))
-    if (late.length > 0) {
-      const lastWeekOf = (c: string) =>
-        Math.max(
-          ...Object.entries(plan.distribution)
-            .filter(([, codes]) => codes.includes(c))
-            .map(([wk]) => Number(wk)),
-        )
-      const worst = late.reduce((a, b) => (lastWeekOf(a) >= lastWeekOf(b) ? a : b))
-      const wk = lastWeekOf(worst)
-      fail(16, {
-        title: '수행평가 성취기준이 진도보다 앞섭니다',
-        detail:
-          `${p.name || '(이름 없음)'} · 실시 ${p.week}주(${monthWeekLabel(school, plan.semester, p.week)}) · ` +
-          `가장 늦게 배우는 ${worst}는 ${wk}주(${monthWeekLabel(school, plan.semester, wk)})에 배웁니다 — ` +
-          `실시 주차를 그 뒤로 옮기거나 성취기준을 바꾸세요`,
-        target: 'perf',
-        perfId: p.id,
-      })
+  /*
+   * 16. 수행평가 성취기준이 실시 주까지의 진도에 포함 — 점검표 "실시일까지 진도가 나갔는지".
+   *
+   * 유일하게 '확인'으로 넘어갈 수 있는 규칙이다. 확인을 누르면 그 시점의
+   * 상태 지문이 저장되고, 성취기준·시기·진도가 바뀌면 지문이 달라져 다시 묻는다.
+   */
+  const acked = plan.perf_progress_ack === perfProgressFingerprint(plan)
+  if (!acked) {
+    for (const p of plan.performances) {
+      const taught = new Set(
+        Object.entries(plan.distribution)
+          .filter(([wk]) => Number(wk) <= p.week)
+          .flatMap(([, codes]) => codes),
+      )
+      // distribution 어디에도 없는 코드는 규칙 10의 몫 — 여기서 또 알리면 이중 보고다
+      const late = p.standard_codes.filter((c) => !taught.has(c) && placedCodes.has(c))
+      if (late.length > 0) {
+        const lastWeekOf = (c: string) =>
+          Math.max(
+            ...Object.entries(plan.distribution)
+              .filter(([, codes]) => codes.includes(c))
+              .map(([wk]) => Number(wk)),
+          )
+        const worst = late.reduce((a, b) => (lastWeekOf(a) >= lastWeekOf(b) ? a : b))
+        const wk = lastWeekOf(worst)
+        fail(16, {
+          title: '수행평가 성취기준과 교과진도계획 확인하셨나요?',
+          detail:
+            `${p.name || '(이름 없음)'} · 실시 ${p.week}주(${monthWeekLabel(school, plan.semester, p.week)}) · ` +
+            `성취기준 ${worst}는 진도표에서 ${wk}주(${monthWeekLabel(school, plan.semester, wk)})에 배웁니다 — ` +
+            `실시 주차나 성취기준을 조정하시거나, 계획대로 맞다면 확인을 눌러 주세요`,
+          target: 'perf',
+          perfId: p.id,
+          confirmable: true,
+        })
+      }
     }
   }
 

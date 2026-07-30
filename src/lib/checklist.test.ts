@@ -17,6 +17,7 @@ import {
   monthWeekLabel,
   orderedStandardCodes,
   perfAreaCap,
+  perfProgressFingerprint,
   weekNoFromMonthWeek,
 } from './derive'
 import { RULE_COUNT, validate } from './validate'
@@ -142,6 +143,22 @@ describe('검증 규칙 16~19 · 2·3 수정', () => {
     expect(found).toBeDefined()
     // 안내문에는 무엇을 언제 배우는지가 들어 있어야 교사가 고칠 수 있다
     expect(found!.detail).toMatch(/\d+주\(\d+월 \d+주\)/)
+  })
+
+  it("16 — '확인했습니다'는 그 상태에서만 유효하다", () => {
+    const plan = planWith({
+      performances: [perf({ week: 4 }), PLAN_SEED.performances[1]],
+    })
+    expect(rulesOf(plan)).toContain(16)
+    // 확인: 지금 상태의 지문을 저장하면 조용해진다
+    const acked = { ...plan, perf_progress_ack: perfProgressFingerprint(plan) }
+    expect(rulesOf(acked)).not.toContain(16)
+    // 그러나 시기를 또 바꾸면 지문이 어긋나 다시 묻는다
+    const changed = {
+      ...acked,
+      performances: [perf({ week: 5 }), PLAN_SEED.performances[1]],
+    }
+    expect(rulesOf(changed)).toContain(16)
   })
 
   it('16 — 진도를 수행평가에 맞춰 다시 배분하면 통과한다', () => {
