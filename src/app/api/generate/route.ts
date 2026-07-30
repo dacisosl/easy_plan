@@ -65,7 +65,13 @@ async function callModel(
         Authorization: `Bearer ${key.trim()}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': process.env.OPENROUTER_SITE_URL ?? 'http://localhost:3000',
-        'X-Title': '교수학습 및 평가 운영계획서',
+        /*
+         * ★ HTTP 헤더 값은 Latin-1만 허용된다. 여기 한글('교수학습 및 평가 운영계획서')을
+         *   넣었더니 fetch가 보내기도 전에 ByteString 예외를 던져 — 키가 있어도 —
+         *   모든 모델 호출이 조용히 fallback으로 떨어졌다. 제목은 OpenRouter 대시보드
+         *   표시용일 뿐이니 ASCII면 된다.
+         */
+        'X-Title': 'easy_plan',
       },
       body: JSON.stringify({
         model,
