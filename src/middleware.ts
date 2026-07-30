@@ -1,54 +1,47 @@
 /**
- * 접근 제어 — 공개 배포 시 아무나 들어와 AI 크레딧을 태우는 걸 막는다.
+ * 문지기 — 로그인 쿠키가 없으면 로그인 화면으로 보낸다.
  *
- * `APP_PASSWORD`가 설정돼 있을 때만 동작한다. 로컬 개발에서는 비워 두면 그냥 통과한다.
- * HTTP Basic 인증이라 별도 로그인 화면이 필요 없고 브라우저가 물어본다.
- * API 라우트까지 함께 막힌다 — 페이지만 막으면 /api/generate가 그대로 열려 있어 의미가 없다.
+ * ★ 여기서는 쿠키가 **있는지만** 본다. 진짜 검증은 Node 라우트에서 한다.
+ *   미들웨어는 Edge에서 돌아 firebase-admin(서비스 계정 키·암호 검증)을 쓸 수 없다.
+ *   그래서 이 문은 '길 안내'이고, 자물쇠는 각 API가 직접 채운다 —
+ *   `/api/generate`와 `/api/me`는 쿠키를 실제로 검증하고 승인 여부까지 확인한다.
+ *   쿠키를 위조해 여기를 통과해도 API에서 막힌다.
  *
- * 이 방식을 고른 이유: Vercel의 Password Protection은 유료 애드온이고,
- * 무료인 Vercel Authentication은 방문자에게 Vercel 계정을 요구한다.
- * 앱에 넣어 두면 어느 호스팅을 쓰든 똑같이 동작한다.
- *
- * ※ 비밀번호 하나를 나눠 쓰는 방식이다. 사용자별 계정이 필요해지면 제대로 된
- *    인증(예: Auth.js)으로 갈아타야 한다.
+ * 로컬 개발: 로그인 설정(NEXT_PUBLIC_FIREBASE_PROJECT_ID)이 없으면 잠그지 않는다.
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
 
-const REALM = 'easy_plan'
+const SESSION_COOKIE = 'ep_session'
 
-/** 길이가 달라도 같은 시간이 걸리게 비교한다 (타이밍 차이로 흘리지 않기 위해) */
-function safeEqual(a: string, b: string): boolean {
-  const len = Math.max(a.length, b.length)
-  let diff = a.length ^ b.length
-  for (let i = 0; i < len; i++) {
-    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0)
-  }
-  return diff === 0
+/** 로그인 없이도 열려 있어야 하는 곳 */
+function isPublic(pathname: string): boolean {
+  return (
+    pathname === '/login' ||
+    pathname === '/api/session' || // 쿠키를 만드는 길
+    pathname === '/favicon.ico' ||
+    pathname === '/school-logo.png'
+  )
 }
 
 export function middleware(req: NextRequest) {
-  const expected = process.env.APP_PASSWORD
-  if (!expected) return NextResponse.next() // 설정 안 했으면 잠그지 않는다
+  // 설정이 없으면 로그인을 걸지 않는다 — 키 없이도 화면을 만질 수 있어야 한다
+  if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) return NextResponse.next()
 
-  const header = req.headers.get('authorization') ?? ''
-  if (header.startsWith('Basic ')) {
-    try {
-      const decoded = atob(header.slice(6))
-      const password = decoded.slice(decoded.indexOf(':') + 1)
-      if (safeEqual(password, expected)) return NextResponse.next()
-    } catch {
-      // 잘못된 base64 — 아래에서 다시 물어본다
-    }
+  const { pathname } = req.nextUrl
+  if (isPublic(pathname)) return NextResponse.next()
+  if (req.cookies.get(SESSION_COOKIE)?.value) return NextResponse.next()
+
+  // API는 화면으로 보낼 수 없다 — 상태 코드로 답한다
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: '로그인이 필요합니다' }, { status: 401 })
   }
 
-  return new NextResponse('인증이 필요합니다', {
-    status: 401,
-    headers: { 'WWW-Authenticate': `Basic realm="${REALM}", charset="UTF-8"` },
-  })
+  const to = new URL('/login', req.nextUrl)
+  if (pathname !== '/') to.searchParams.set('next', pathname)
+  return NextResponse.redirect(to)
 }
 
 export const config = {
-  // 정적 자산과 파비콘은 제외하고 전부 (페이지 + API) 검사한다
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image).*)'],
 }

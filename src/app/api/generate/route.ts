@@ -7,8 +7,10 @@
  * AI는 문장만 쓴다. 숫자는 aiDraft.ts의 뼈대(코드 계산값)가 강제한다.
  */
 
+import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { SchoolLayer, SemesterPlan, Subject } from '@/types'
+import { SESSION_COOKIE, adminReady, userFromSession } from '@/lib/firebase/admin'
 import {
   STAGES,
   extractJson,
@@ -40,7 +42,10 @@ interface Body {
 
 async function callModel(
   prompt: { system: string; user: string },
+  allowed: boolean,
 ): Promise<{ json: unknown; model: string } | null> {
+  // 승인받지 않은 사람은 모델을 부르지 않는다 — 대체 문구로 완결된다
+  if (!allowed) return null
   const key = process.env.OPENROUTER_API_KEY
   if (!key) return null
   const model = process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL
@@ -72,6 +77,21 @@ async function callModel(
   }
 }
 
+/**
+ * 이 사람이 모델을 부를 수 있는가.
+ *
+ * 우리 OpenRouter 키로 도는 자리라 아무나 부르면 크레딧이 타 버린다.
+ * 관리자가 승인한 사람만 통과시키고, 나머지는 대체 문구로 완결한다 —
+ * 막는 게 아니라 '키를 안 쓰는 길'로 보내는 것이다. 계획서는 그대로 만들어진다.
+ *
+ * 로그인 설정이 없는 로컬 개발에서는 그냥 허용한다.
+ */
+async function mayUseModel(): Promise<boolean> {
+  if (!adminReady) return true
+  const user = await userFromSession((await cookies()).get(SESSION_COOKIE)?.value)
+  return user?.approved === true
+}
+
 export async function POST(req: Request) {
   let body: Body
   try {
@@ -89,10 +109,11 @@ export async function POST(req: Request) {
   }
 
   const hash = inputHash(plan, subject)
+  const allowed = await mayUseModel()
 
   if (stage === 'sections') {
     const fb = fallbackSections(plan, subject, school)
-    const res = await callModel(sectionsPrompt(plan, subject))
+    const res = await callModel(sectionsPrompt(plan, subject), allowed)
     const parsed = parseSections(res?.json, fb)
     return NextResponse.json({
       input_hash: hash,
@@ -104,7 +125,7 @@ export async function POST(req: Request) {
 
   if (stage === 'weekly') {
     const fb = fallbackWeekly(plan, subject, school)
-    const res = await callModel(weeklyPrompt(plan, subject, school))
+    const res = await callModel(weeklyPrompt(plan, subject, school), allowed)
     const parsed = parseWeekly(res?.json, fb)
     return NextResponse.json({
       input_hash: hash,
@@ -115,7 +136,7 @@ export async function POST(req: Request) {
   }
 
   // perfs — 문안 생성 + 내부 자체 점검(aiReview)을 warnings로
-  const res = plan.performances.length > 0 ? await callModel(perfsPrompt(plan, subject)) : null
+  const res = plan.performances.length > 0 ? await callModel(perfsPrompt(plan, subject), allowed) : null
   const parsed = res
     ? parsePerfs(res.json, plan)
     : {

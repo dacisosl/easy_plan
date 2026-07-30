@@ -16,8 +16,11 @@
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
     "@prisma/client": "^6.3.0",
     "@xmldom/xmldom": "^0.9.7",
+    "firebase": "^12.16.0",
+    "firebase-admin": "^14.2.0",
     "jszip": "^3.10.1",
     "next": "^15.1.6",
     "react": "^19.0.0",

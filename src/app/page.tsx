@@ -2,6 +2,7 @@
 
 import { usePlanStore } from '@/store/usePlanStore'
 import { AppHeader } from '@/components/AppHeader'
+import { AuthGate } from '@/components/AuthGate'
 import { Home } from '@/screens/Home'
 import { Generating } from '@/screens/Generating'
 import { Download } from '@/screens/Download'
@@ -32,12 +33,14 @@ export default function Page() {
   }
 
   return (
-    <div className={`min-h-screen ${onHero ? 'hero-wash' : 'bg-white'}`}>
-      <AppHeader />
-      {/* 폭은 헤더와 늘 같게 — 로고·버튼이 본문 모서리에 맞아야 오와 열이 선다 */}
-      <main className={`mx-auto max-w-[880px] px-4 pb-24 sm:px-6 ${onHero ? 'pt-4' : 'pt-8'}`}>
-        {body()}
-      </main>
-    </div>
+    <AuthGate>
+      <div className={`min-h-screen ${onHero ? 'hero-wash' : 'bg-white'}`}>
+        <AppHeader />
+        {/* 폭은 헤더와 늘 같게 — 로고·버튼이 본문 모서리에 맞아야 오와 열이 선다 */}
+        <main className={`mx-auto max-w-[880px] px-4 pb-24 sm:px-6 ${onHero ? 'pt-4' : 'pt-8'}`}>
+          {body()}
+        </main>
+      </div>
+    </AuthGate>
   )
 }
