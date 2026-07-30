@@ -12,7 +12,7 @@ import { usePlanStore } from '@/store/usePlanStore'
  * 그 조상을 기준으로 잡힌다. 우리 화면은 등장 애니메이션(fade-in 등)에서 transform을
  * 쓰므로, 그 안에 두면 창이 문서 전체 높이로 늘어나 버린다(휴대폰에서 2900px까지 늘었다).
  */
-function Portal({ children }: { children: ReactNode }) {
+export function Portal({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
   useEffect(() => setReady(true), [])
   if (!ready) return null
