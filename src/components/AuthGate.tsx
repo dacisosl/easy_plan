@@ -3,13 +3,13 @@
 /**
  * 로그인한 사람의 상태에 따라 화면을 가른다.
  *
- *   설정 없음(로컬)   → 그냥 통과
+ *   로그인 안 함      → 그냥 통과 (로그인은 선택이다)
  *   이름 안 정함      → 이름 정하는 화면
- *   그 밖             → 통과 (승인은 막지 않는다)
+ *   그 밖             → 통과
  *
- * 왜 미승인도 통과시키는가: 승인은 **AI 문안**을 쓰는 권한이다. 계획서를 짜고
- * 한글 파일로 내려받는 일은 승인 없이도 할 수 있어야 한다. 그게 이 도구의 본체다.
- * 승인을 안 받은 사람은 빨간 글씨가 고정 문구로 나올 뿐이다.
+ * 로그인이 여는 것은 **AI 문안** 하나다 — 구글로 들어와 이름을 정하면, 관리자가
+ * 그 이름을 보고 승인해 준다. 계획서를 짜고 한글 파일로 내려받는 일은 로그인
+ * 없이도 할 수 있어야 한다. 그게 이 도구의 본체다.
  */
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
@@ -26,6 +26,7 @@ export interface Me {
 
 /**
  * 지금 들어온 사람 — 한 번만 물어보고 화면 전체가 같은 답을 본다.
+ * `null`은 '로그인 안 함'이다. 오류가 아니다.
  *
  * 화면마다 `/api/me`를 다시 부르면 답이 엇갈릴 수 있고(승인 직후 같은 순간),
  * 무엇보다 같은 값을 두 곳에서 들고 있게 된다.
@@ -37,30 +38,28 @@ export function useMe(): Me | null {
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const [me, setMe] = useState<Me | null>(null)
-  const [failed, setFailed] = useState(false)
+  // undefined = 아직 물어보는 중, null = 로그인 안 함
+  const [me, setMe] = useState<Me | null | undefined>(undefined)
 
   useEffect(() => {
     let alive = true
     fetch('/api/me')
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((j: Me) => alive && setMe(j))
-      .catch(() => {
-        if (!alive) return
-        // 쿠키가 만료됐거나 위조된 경우 — 로그인 화면으로 되돌린다
-        setFailed(true)
-        window.location.href = '/login'
+      .then(async (r) => {
+        if (r.ok) return (await r.json()) as Me
+        // 로그인 안 함(쿠키 없음·만료) — 들여보낸다. 로그인은 선택이다
+        return null
       })
+      .catch(() => null) // 네트워크가 안 되면 익명으로라도 열어 준다
+      .then((j) => alive && setMe(j))
     return () => {
       alive = false
     }
   }, [])
 
-  if (failed) return null
   // 첫 판단이 끝나기 전에는 아무것도 그리지 않는다 — 화면이 두 번 바뀌면 어지럽다
-  if (!me) return null
+  if (me === undefined) return null
 
-  if (!me.authDisabled && !me.displayName) {
+  if (me && !me.authDisabled && !me.displayName) {
     return (
       <NameStep email={me.email ?? ''} onDone={(name) => setMe({ ...me, displayName: name })} />
     )
@@ -102,9 +101,9 @@ function NameStep({ email, onDone }: { email: string; onDone: (name: string) => 
           어떻게 불러 드릴까요?
         </h1>
         <p className="mt-3 text-[14.5px] leading-relaxed text-ink-2">
-          계획서에 들어가는 지도교사 이름으로 쓰입니다.
+          관리자가 이 이름을 보고 AI 문안 사용을 승인해 드립니다.
           <br />
-          나중에 바꿀 수 있습니다.
+          알아볼 수 있는 실명으로 적어 주세요.
         </p>
 
         <input

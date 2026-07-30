@@ -2,7 +2,7 @@
  * 서버 쪽 Firebase — 사람을 확인하고 승인 여부를 읽는다.
  *
  * ★ 서버에서만 쓴다. 서비스 계정 키가 여기 들어오므로 클라이언트로 새면 프로젝트가 통째로 열린다.
- *   Node 런타임에서만 돈다 — 미들웨어(Edge)에서는 쓸 수 없다.
+ *   Node 런타임에서만 돈다 — Edge에서는 쓸 수 없다.
  *
  * 승인 명단은 Firestore `users/{uid}` 문서에 둔다.
  *   { email, googleName, displayName, approved, approvedAt, approvedBy, admin }
@@ -91,7 +91,7 @@ function adminApp(): App {
   throw new Error('FIREBASE_SERVICE_ACCOUNT 가 없습니다')
 }
 
-/** 쿠키 이름 — 미들웨어도 이 이름만 보고 문을 지킨다 */
+/** 쿠키 이름 */
 export const SESSION_COOKIE = 'ep_session'
 /** 쿠키 수명 — 학기 중에 매일 다시 로그인하게 만들 이유가 없다 */
 export const SESSION_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000

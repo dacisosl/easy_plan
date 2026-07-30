@@ -8,6 +8,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { useMe } from '@/components/AuthGate'
+import { signOutEverywhere } from '@/lib/firebase/client'
 import { usePlanStore, type ScreenId } from '@/store/usePlanStore'
 
 const DOING: Record<ScreenId, string> = {
@@ -20,6 +22,7 @@ const DOING: Record<ScreenId, string> = {
 
 export function AppHeader() {
   const { screen, go, currentPlanId, startNew } = usePlanStore()
+  const me = useMe()
   /*
    * 학교 마크 — public/school-logo.png 를 넣으면 뜨고, 없으면 '평' 사각형으로.
    * onError만으로는 부족하다. 리액트가 붙기 전에 이미 실패해 있으면 그 이벤트를
@@ -155,6 +158,27 @@ export function AppHeader() {
             </svg>
             <span className="hidden sm:inline">참고자료</span>
           </button>
+
+          {/*
+           * 로그인은 선택이다 — 여는 것은 AI 문안 하나.
+           * 로컬(설정 없음)에서는 아무것도 안 보인다. 없는 문을 그려 두면 눌러 보게 된다.
+           */}
+          {me?.authDisabled ? null : me?.email ? (
+            <button
+              className="btn btn-sm btn-ghost max-w-[120px] truncate whitespace-nowrap"
+              title={`${me.email} — 로그아웃`}
+              onClick={() => {
+                if (window.confirm('로그아웃할까요?'))
+                  signOutEverywhere().then(() => window.location.reload())
+              }}
+            >
+              {me.displayName ?? me.email}
+            </button>
+          ) : (
+            <a className="btn btn-sm btn-ghost whitespace-nowrap" href="/login" title="AI 문안용">
+              로그인
+            </a>
+          )}
         </div>
       </div>
     </header>

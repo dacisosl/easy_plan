@@ -32,7 +32,7 @@ export function clientAuth(): Auth {
  * 구글 로그인 창을 띄우고, 받은 ID 토큰을 서버에 넘겨 쿠키로 바꾼다.
  *
  * 왜 쿠키까지 만드는가: 토큰을 브라우저에만 두면 서버가 매 요청마다 사람을 알 수 없다.
- * httpOnly 쿠키로 바꿔 두면 미들웨어와 API가 같은 문으로 판단할 수 있다.
+ * httpOnly 쿠키로 바꿔 두면 서버의 어느 API든 같은 문으로 판단할 수 있다.
  */
 export async function signInWithGoogle(): Promise<void> {
   const provider = new GoogleAuthProvider()
