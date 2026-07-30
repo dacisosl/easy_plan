@@ -303,7 +303,7 @@ export function validate(
         const worst = late.reduce((a, b) => (lastWeekOf(a) >= lastWeekOf(b) ? a : b))
         const wk = lastWeekOf(worst)
         fail(16, {
-          title: '수행평가 성취기준과 교과진도계획 확인하셨나요?',
+          title: '교과진도계획에 맞는 수행평가 성취기준을 선택하셨나요?',
           detail:
             `${p.name || '(이름 없음)'} · 실시 ${p.week}주(${monthWeekLabel(school, plan.semester, p.week)}) · ` +
             `성취기준 ${worst}는 진도표에서 ${wk}주(${monthWeekLabel(school, plan.semester, wk)})에 배웁니다 — ` +

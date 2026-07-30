@@ -412,6 +412,7 @@ function PlanForm({
     removePerf,
     rebalancePerfRatios,
     redistribute,
+    confirmPerfProgress,
     focusTarget,
     clearFocus,
   } = usePlanStore()
@@ -434,6 +435,25 @@ function PlanForm({
   const showErrors = plan.performances.some((p) => p.name.trim().length > 0)
   const firstError = (t: FocusTarget) =>
     showErrors ? result.errors.find((e) => e.target === t)?.title : undefined
+
+  /*
+   * 수행평가 구획의 오류 — 확인으로 넘어갈 수 있는 문제(규칙 16)면 물음 옆에
+   * '확인했습니다' 버튼을 같이 둔다. 질문만 던지고 답할 길을 안 주면 막다른 골목이다.
+   */
+  const perfIssue = showErrors ? result.errors.find((e) => e.target === 'perf') : undefined
+  const perfError = !perfIssue ? undefined : !perfIssue.confirmable ? (
+    perfIssue.title
+  ) : (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <span className="flex flex-col gap-0.5">
+        {perfIssue.title}
+        <span className="text-[12px] text-red-ink">{perfIssue.detail}</span>
+      </span>
+      <button type="button" className="btn btn-sm shrink-0" onClick={confirmPerfProgress}>
+        확인했습니다
+      </button>
+    </span>
+  )
 
   /* 시험지 100점을 어떻게 나눌지 — 선택형은 나머지라 따로 적지 않는다 */
   const pointsOf = (e: { parts: ExamPart[] }, kind: ExamPart['kind']) =>
@@ -928,7 +948,7 @@ function PlanForm({
             + 추가
           </button>
         }
-        error={firstError('perf')}
+        error={perfError}
       >
         {plan.performances.length === 0
           ? null
