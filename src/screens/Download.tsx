@@ -9,7 +9,7 @@
 import { useState } from 'react'
 import { ColorKey, PlanSubtitle, Screen } from '@/components/ui'
 import { usePlanStore } from '@/store/usePlanStore'
-import { validate } from '@/lib/validate'
+import { RULE_COUNT, validate } from '@/lib/validate'
 import { weeksOf } from '@/lib/derive'
 import { generateDraft } from '@/lib/generateClient'
 
@@ -78,7 +78,10 @@ export function Download() {
   }
 
   const rows: [string, string][] = [
-    ['단원', `${subject.units.length}개 · 성취기준 ${subject.standards.length}개 중 ${assigned.size}개 배정`],
+    [
+      '단원',
+      `${subject.units.length}개 · 성취기준 ${subject.standards.length}개 중 ${assigned.size}개 배정`,
+    ],
     [
       '진도',
       `${weeksOf(school, plan.semester).length}주 배분 · 정기시험 ${
@@ -86,7 +89,10 @@ export function Download() {
       }`,
     ],
     ['수행평가', `${plan.performances.length}개 · ${perfSum}%`],
-    ['로직 검증', result.errors.length === 0 ? '15개 규칙 통과' : `오류 ${result.errors.length}개`],
+    [
+      '로직 검증',
+      result.errors.length === 0 ? `${RULE_COUNT}개 규칙 통과` : `오류 ${result.errors.length}개`,
+    ],
   ]
 
   return (
@@ -108,8 +114,8 @@ export function Download() {
       {result.errors.length > 0 && (
         <div className="flex flex-col gap-3">
           <span className="text-sm text-red-ink">
-            로직 오류 {result.errors.length}개를 고쳐야 내려받을 수 있습니다 — 고치기를 누르면
-            해당 입력란으로 갑니다
+            로직 오류 {result.errors.length}개를 고쳐야 내려받을 수 있습니다 — 고치기를 누르면 해당
+            입력란으로 갑니다
           </span>
           {result.errors.map((e, i) => (
             <div key={i} className="notice-err flex items-center justify-between gap-5">

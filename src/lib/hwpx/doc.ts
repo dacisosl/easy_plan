@@ -125,14 +125,7 @@ export class HwpxDoc {
     const name = `Contents/section${section}.xml`
     if (!files.has(name)) throw new Error(`${name} 이 없습니다`)
     const doc = parse(name)
-    return new HwpxDoc(
-      files,
-      order,
-      doc,
-      doc.documentElement as unknown as El,
-      parse(HEADER),
-      name,
-    )
+    return new HwpxDoc(files, order, doc, doc.documentElement as unknown as El, parse(HEADER), name)
   }
 
   /** 이 파일에 구역이 몇 개인지 (학년 전체 계획서는 과목 수만큼 나뉜다) */
@@ -167,11 +160,7 @@ export class HwpxDoc {
 
   /** 표·셀 본문 글자 (메모 제외) */
   textOf(node: El): string {
-    return runsOutsideCtrl(node)
-      .map(runText)
-      .join('')
-      .replace(/\s+/g, ' ')
-      .trim()
+    return runsOutsideCtrl(node).map(runText).join('').replace(/\s+/g, ' ').trim()
   }
 
   rows(tbl: El): El[] {
@@ -255,6 +244,22 @@ export class HwpxDoc {
   setParaRed(p: El, text: string): void {
     const base = this.inheritCharPr(p)
     this.setPara(p, text, { charPrIDRef: this.ensureRedCharPr(base) })
+  }
+
+  /**
+   * 문단의 **선두 글자만** 바꾼다 — '바.'를 '마.'로 당기는 항목 재배열용.
+   *
+   * setPara는 문단 전체를 첫 <hp:t> 하나로 뭉개므로, 이미 채워 둔 빨간 스팬
+   * (수행평가명 등)이 있는 문단에는 못 쓴다. 여기서는 첫 번째 비어 있지 않은
+   * <hp:t>의 앞머리만 갈아끼워 run 구조와 서식을 그대로 남긴다.
+   */
+  replaceParaLead(p: El, from: string, to: string): boolean {
+    const ts = runsOutsideCtrl(p).flatMap((r) => childrenOf(r, 't'))
+    const first = ts.find((t) => (t.textContent ?? '') !== '')
+    if (!first || !(first.textContent ?? '').startsWith(from)) return false
+    first.textContent = to + (first.textContent ?? '').slice(from.length)
+    for (const lsa of childrenOf(p, 'linesegarray')) p.removeChild(lsa)
+    return true
   }
 
   /** 문단이 쓰는(또는 상속받을) charPrIDRef — 렌더러가 검정 참조를 미리 확보할 때 쓴다 */
@@ -378,9 +383,7 @@ export class HwpxDoc {
    */
   repeatRowBlock(tbl: El, headRows: number, blockSize: number, count: number): void {
     const trs = this.rows(tbl)
-    const block = trs
-      .slice(headRows, headRows + blockSize)
-      .map((tr) => tr.cloneNode(true) as El)
+    const block = trs.slice(headRows, headRows + blockSize).map((tr) => tr.cloneNode(true) as El)
     if (block.length === 0) return
 
     for (const tr of trs.slice(headRows)) tbl.removeChild(tr)
@@ -420,8 +423,7 @@ export class HwpxDoc {
    */
   fitItemCols(tbl: El, headCols: number, tailCols: number, want: number): void {
     const colOf = (tc: El) => Number(childrenOf(tc, 'cellAddr')[0]?.getAttribute('colAddr') ?? '0')
-    const spanOf = (tc: El) =>
-      Number(childrenOf(tc, 'cellSpan')[0]?.getAttribute('colSpan') ?? '1')
+    const spanOf = (tc: El) => Number(childrenOf(tc, 'cellSpan')[0]?.getAttribute('colSpan') ?? '1')
 
     const total = Number(tbl.getAttribute('colCnt') ?? '0')
     const itemEnd = total - tailCols
@@ -679,9 +681,7 @@ export class HwpxDoc {
   removeMemos(): number {
     let n = 0
     for (const ctrl of descendants(this.sec, 'ctrl')) {
-      const isMemo = childrenOf(ctrl, 'fieldBegin').some(
-        (f) => f.getAttribute('type') === 'MEMO',
-      )
+      const isMemo = childrenOf(ctrl, 'fieldBegin').some((f) => f.getAttribute('type') === 'MEMO')
       const isEnd = childrenOf(ctrl, 'fieldEnd').length > 0
       if (isMemo || isEnd) {
         ctrl.parentNode?.removeChild(ctrl)

@@ -6,10 +6,18 @@
  * 모델 호출로 바꾸려면 이 파일만 교체하면 된다.
  */
 
-import type { PerfMethodCheck, Performance, RubricRow, SchoolLayer, SemesterPlan, Subject } from '@/types'
+import type {
+  PerfMethodCheck,
+  Performance,
+  RubricRow,
+  SchoolLayer,
+  SemesterPlan,
+  Subject,
+} from '@/types'
 import {
   calendarOf,
   distributeStandards,
+  essayExempt,
   essayTotal,
   parseDate,
   spread,
@@ -18,16 +26,13 @@ import {
 } from './derive'
 
 /** '5월 20일' 또는 '2026-05-20' → 그 날짜가 든 주차 번호 */
-export function weekFromDate(
-  school: SchoolLayer,
-  semester: 1 | 2,
-  input: string,
-): number | null {
+export function weekFromDate(school: SchoolLayer, semester: 1 | 2, input: string): number | null {
   const iso = input.match(/(\d{4})-(\d{2})-(\d{2})/)
   const ko = input.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/)
   let target: Date | null = null
   if (iso) target = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
-  else if (ko) target = new Date(calendarOf(school, semester).year, Number(ko[1]) - 1, Number(ko[2]))
+  else if (ko)
+    target = new Date(calendarOf(school, semester).year, Number(ko[1]) - 1, Number(ko[2]))
   if (!target) return null
 
   for (const w of weeksOf(school, semester)) {
@@ -129,36 +134,63 @@ export function allocatePerfRatios(total: number, count: number, areaMax: number
   return out
 }
 
-const ELEMENT_BY_CHECK: Record<PerfMethodCheck, { area: string; element: string; verbs: [string, string, string] }> = {
+const ELEMENT_BY_CHECK: Record<
+  PerfMethodCheck,
+  { area: string; element: string; verbs: [string, string, string] }
+> = {
   '서술·논술': {
     area: '표현',
     element: '근거 들어 쓰기',
-    verbs: ['주장마다 근거를 들어 분명하게 씀', '일부 주장에만 근거를 붙여 씀', '근거 없이 주장만 나열함'],
+    verbs: [
+      '주장마다 근거를 들어 분명하게 씀',
+      '일부 주장에만 근거를 붙여 씀',
+      '근거 없이 주장만 나열함',
+    ],
   },
   '구술·발표': {
     area: '표현',
     element: '발표하기',
-    verbs: ['핵심을 정리해 듣는 사람이 이해하도록 말함', '내용은 전달되나 정리가 느슨함', '원고를 읽는 수준에 머무름'],
+    verbs: [
+      '핵심을 정리해 듣는 사람이 이해하도록 말함',
+      '내용은 전달되나 정리가 느슨함',
+      '원고를 읽는 수준에 머무름',
+    ],
   },
   '토의·토론': {
     area: '참여',
     element: '토론 참여하기',
-    verbs: ['상대 주장을 듣고 근거를 들어 반박함', '자기 주장은 말하나 상대 주장에 대한 반응이 적음', '발언이 거의 없음'],
+    verbs: [
+      '상대 주장을 듣고 근거를 들어 반박함',
+      '자기 주장은 말하나 상대 주장에 대한 반응이 적음',
+      '발언이 거의 없음',
+    ],
   },
   프로젝트: {
     area: '탐구',
     element: '자료 해석하기',
-    verbs: ['자료의 핵심을 정확히 해석하고 근거를 들어 설명함', '자료를 해석하였으나 근거 제시가 부분적임', '자료를 단순히 옮겨 적는 수준에 머무름'],
+    verbs: [
+      '자료의 핵심을 정확히 해석하고 근거를 들어 설명함',
+      '자료를 해석하였으나 근거 제시가 부분적임',
+      '자료를 단순히 옮겨 적는 수준에 머무름',
+    ],
   },
   '실험·실습': {
     area: '수행',
     element: '절차 수행하기',
-    verbs: ['절차를 정확히 지키고 결과를 기록함', '절차는 지켰으나 기록이 부분적임', '절차 수행에 도움이 필요함'],
+    verbs: [
+      '절차를 정확히 지키고 결과를 기록함',
+      '절차는 지켰으나 기록이 부분적임',
+      '절차 수행에 도움이 필요함',
+    ],
   },
   포트폴리오: {
     area: '누적',
     element: '기록 관리하기',
-    verbs: ['모든 차시의 결과물을 빠짐없이 정리함', '일부 차시의 결과물이 빠짐', '결과물이 대부분 빠짐'],
+    verbs: [
+      '모든 차시의 결과물을 빠짐없이 정리함',
+      '일부 차시의 결과물이 빠짐',
+      '결과물이 대부분 빠짐',
+    ],
   },
   기타: {
     area: '수행',
@@ -200,9 +232,10 @@ export interface SimpleInput {
 }
 
 /**
- * 실시 주차를 고른다. 검증 규칙 11·14·15를 처음부터 통과하도록 자리를 잡는다.
+ * 실시 주차를 고른다. 검증 규칙 11·14·15·19를 처음부터 통과하도록 자리를 잡는다.
  *  - 정기시험 주가 아니고 수업이 있는 주
  *  - 마지막 정기시험 이전 (규칙 11)
+ *  - 2회 실시 과목은 1회 시험 2주 전 ~ 2회 시험 전 (규칙 19 · 점검표)
  *  - 이미 다른 수행평가가 잡힌 주가 아님 (규칙 14)
  *  - 안내 주(실시 − 2주)도 수업 주여야 함 (규칙 15)
  */
@@ -214,12 +247,15 @@ function pickWeek(
 ): number {
   const lead = school.rules.notice_lead_weeks
   const weeks = weeksOf(school, plan.semester)
-  const lastExam = [...plan.exams].sort((a, b) => b.week - a.week)[0]
-  const limit = lastExam ? lastExam.week : weeks.length
+  const sorted = [...plan.exams].sort((a, b) => a.week - b.week)
+  const lastExam = sorted[sorted.length - 1]
+  const twoExams = plan.exam_count === 2 && sorted.length >= 2
+  const lower = twoExams ? Math.max(lead + 1, sorted[0].week - 2) : lead + 1
+  const limit = twoExams ? sorted[1].week - 1 : lastExam ? lastExam.week : weeks.length
   const teaching = new Set(teachingWeeks(weeks).map((w) => w.no))
 
   const usable = (n: number) =>
-    n > lead && n <= limit && teaching.has(n) && teaching.has(n - lead) && !taken.has(n)
+    n >= lower && n <= limit && teaching.has(n) && teaching.has(n - lead) && !taken.has(n)
 
   if (wanted && usable(wanted)) return wanted
 
@@ -230,6 +266,22 @@ function pickWeek(
     if (usable(base + d)) return base + d
   }
   return wanted ?? base
+}
+
+/**
+ * 자동 성취기준 선정 — 실시 주까지 다룬 성취기준 중 마지막 몇 개(배분이 이미 진도 순서다).
+ * buildPerformance와, 실시 주차가 바뀔 때의 재동기화(store.patchPerf)가 같은 답을 내야 한다.
+ */
+export function autoStandardCodes(
+  distribution: SemesterPlan['distribution'],
+  week: number,
+  maxCodes: number,
+): string[] {
+  const taught = Object.entries(distribution)
+    .filter(([wk]) => Number(wk) <= week)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .flatMap(([, codes]) => codes)
+  return [...new Set(taught)].slice(-Math.min(3, maxCodes))
 }
 
 /**
@@ -255,12 +307,7 @@ export function buildPerformance(args: {
   const { id, name, intent, ratio, week, school, distribution } = args
   const { checks, method } = methodsFromIntent(intent)
 
-  // 그 주까지 다룬 성취기준 중 마지막 3개 — 배분이 이미 진도 순서다
-  const taught = Object.entries(distribution)
-    .filter(([wk]) => Number(wk) <= week)
-    .sort((a, b) => Number(a[0]) - Number(b[0]))
-    .flatMap(([, codes]) => codes)
-  const auto = [...new Set(taught)].slice(-Math.min(3, school.rules.standards_per_perf_max))
+  const auto = autoStandardCodes(distribution, week, school.rules.standards_per_perf_max)
   const manual = args.standardCodes && args.standardCodes.length > 0
 
   return {
@@ -272,7 +319,9 @@ export function buildPerformance(args: {
     // 규칙 4·5 — 만점의 20% 이상 40% 미만, 1점 초과. 프롬프트가 정한 기본은 30%.
     base_score: Math.max(2, Math.round(ratio * 0.3)),
     week,
-    standard_codes: manual ? args.standardCodes!.slice(0, school.rules.standards_per_perf_max) : auto,
+    standard_codes: manual
+      ? args.standardCodes!.slice(0, school.rules.standards_per_perf_max)
+      : auto,
     standards_manual: manual || undefined,
     essay_ratio: args.essayRatio ?? undefined,
     method_checks: checks,
@@ -310,9 +359,10 @@ export function autofill(
     })
   })
 
-  // 규칙 3 — 서술·논술 합계가 하한에 못 미치면 가장 큰 영역에 서술·논술을 더한다
+  // 규칙 3 — 서술·논술 합계가 하한에 못 미치면 가장 큰 영역에 서술·논술을 더한다.
+  // 면제 대상(1단위·수행 80%↑)에게는 강제하지 않는다 — 검증도 안 보는 값이다.
   const draft = { ...plan, distribution, performances }
-  if (essayTotal(draft, plan.exam_ratio) < school.rules.essay_min) {
+  if (!essayExempt(plan) && essayTotal(draft, plan.exam_ratio) < school.rules.essay_min) {
     const biggest = [...performances].sort((a, b) => b.ratio - a.ratio)[0]
     if (biggest && !biggest.method_checks.includes('서술·논술')) {
       biggest.method_checks = ['서술·논술', ...biggest.method_checks]

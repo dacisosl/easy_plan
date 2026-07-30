@@ -402,13 +402,17 @@ function RulesTab() {
         <select
           className="control"
           value={r.month_week_rule}
-          onChange={(e) => set({ month_week_rule: e.target.value as 'start' | 'form_example' })}
+          onChange={(e) =>
+            set({ month_week_rule: e.target.value as 'start' | 'form_example' | 'thursday' })
+          }
         >
+          <option value="thursday">목요일이 속한 달 기준 (학교 확정 규칙)</option>
           <option value="start">시작일이 속한 달 기준</option>
           <option value="form_example">1일이 낀 주 = 1주 (배포 양식 예시)</option>
         </select>
         <span className="hint">
-          같은 주라도 라벨이 한 주씩 밀립니다 — 담당자 확인이 필요한 항목입니다.
+          같은 주라도 라벨이 한 주씩 밀립니다. 예: 6.29~7.3 주는 목요일 기준 7월 1주, 시작일 기준
+          6월 5주.
         </span>
       </label>
     </div>

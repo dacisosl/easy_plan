@@ -14,6 +14,7 @@ import {
   areaRoman,
   calendarOf,
   classRange,
+  essayExempt,
   essayTotal,
   examEssayShare,
   examRatioOf,
@@ -137,7 +138,9 @@ export async function renderForm(
   }
 
   /* ── 진도표 ───────────────────────────────── */
-  const progress = tables.find((t) => doc.cellText(t, 0, 0) === '주' && doc.cellText(t, 0, 1) === '기간')
+  const progress = tables.find(
+    (t) => doc.cellText(t, 0, 0) === '주' && doc.cellText(t, 0, 1) === '기간',
+  )
   if (!progress) warn('진도표를 찾지 못했습니다')
   else {
     // 양식은 앞쪽 몇 주가 4행 블록, 뒤쪽이 1행이라 섞여 있다. 1행/주로 정규화한다.
@@ -206,13 +209,9 @@ export async function renderForm(
        * 머리 칸이 `예정시간` · 빈 줄 · `실시누계` 세 문단이라 데이터도 같은 모양으로
        * 맞춘다. 위아래로도 한 줄씩 띄워 숫자가 칸 가운데에 오게 한다.
        */
-      doc.setCell(
-        progress,
-        r,
-        5,
-        h ? ['', String(h.planned), '', String(h.cumulative), ''] : '',
-        { red: true },
-      )
+      doc.setCell(progress, r, 5, h ? ['', String(h.planned), '', String(h.cumulative), ''] : '', {
+        red: true,
+      })
       doc.setCell(progress, r, 6, w.events.join(', ') || '-')
     })
     did(`진도표 ${weeks.length}주 (1행/주로 정규화)`)
@@ -268,10 +267,20 @@ export async function renderForm(
      * 나 = 분할점수 방식. 양식에는 '추정분할점수'로 박혀 있어서, 고정분할을
      * 고른 계획서도 문서에는 추정이라고 쓰여 나갔다. 교사가 고른 값을 따른다.
      * AI 초안이 아니라 계산값이므로 검정 글씨 그대로 둔다.
+     *
+     * 진로와직업 같은 이수(P/F) 과목은 분할점수 자체가 없다 — 양식 메모가
+     * "나 삭제 + P/F 문구 삽입"을 요구하는데, 삭제하면 다~차 재배열과 AI 문장
+     * 앵커(가·다·라)가 전부 어긋난다. 같은 자리에 P/F 문장을 쓰는 것으로 갈음한다.
      */
     const b = paraStartingWith(scope, '나.')
     if (!b) warn("Ⅲ-1 '나.' 문단을 찾지 못했습니다")
-    else {
+    else if (subject.type === 'pass_fail') {
+      doc.setPara(
+        b,
+        `나. 평가 결과는 점수가 아닌 이수 여부에 'P'로 기록하며, 미이수한 경우 'F'로 입력한다.`,
+      )
+      did('Ⅲ-1 나 · 이수 여부(P/F) 과목 문구')
+    } else {
       doc.setPara(
         b,
         `나. 성취도는 기준 성취율에 따른 ${plan.split_score_type}분할점수로 설정하여 산출한다.`,
@@ -316,6 +325,28 @@ export async function renderForm(
       put('바.', `${perfNames}${tail}`, 'Ⅲ-2 바 · 수행평가명')
     }
     put('사.', `‘${tiebreakOrder(plan).join(' → ')}’`, 'Ⅲ-2 사 · 동점자 순서')
+
+    /*
+     * 마(서·논술형 30%)는 1단위 과목·수행 80% 이상이면 삭제한다 — 양식 메모의 지시.
+     * 반드시 위의 put()들이 끝난 **뒤**여야 한다: 재배열은 바~차의 선두 글자를
+     * 바꾸는데, setPara로 하면 방금 채운 빨간 스팬(수행평가명)이 뭉개진다.
+     * 그래서 replaceParaLead(선두만 교체, run 구조 보존)를 쓴다.
+     */
+    if (essayExempt(plan)) {
+      const ma = paraStartingWith(scope, '마.')
+      if (!ma) warn("Ⅲ-2 '마.' 문단을 찾지 못했습니다")
+      else {
+        doc.remove(ma)
+        const heads = ['바.', '사.', '아.', '자.', '차.']
+        const to = ['마.', '바.', '사.', '아.', '자.']
+        let moved = 0
+        heads.forEach((h, i) => {
+          const p = paraStartingWith(scope, h)
+          if (p && doc.replaceParaLead(p, h, to[i])) moved++
+        })
+        did(`Ⅲ-2 마 삭제(서·논술 면제 — 1단위 또는 수행 80%↑) · ${moved}개 항목 번호 당김`)
+      }
+    }
   }
 
   /* ── Ⅳ 평가 계획 ──────────────────────────── */
@@ -386,9 +417,7 @@ export async function renderForm(
         return at >= HEAD_COLS + wantCols
       })
       const want = [
-        ...(examCols > 0
-          ? [{ span: examCols, text: `정기시험(${plan.exam_ratio}%)` }]
-          : []),
+        ...(examCols > 0 ? [{ span: examCols, text: `정기시험(${plan.exam_ratio}%)` }] : []),
         ...(plan.performances.length > 0
           ? [{ span: plan.performances.length, text: `수행평가(${plan.perf_ratio}%)` }]
           : []),
@@ -416,10 +445,7 @@ export async function renderForm(
        */
       const perfOnes = plan.performances.map(() => 1)
       const splitSpans = [...plan.exams.flatMap((e) => e.parts.map(() => 1)), ...perfOnes]
-      const mergedSpans = [
-        ...plan.exams.map((e) => Math.max(1, e.parts.length)),
-        ...perfOnes,
-      ]
+      const mergedSpans = [...plan.exams.map((e) => Math.max(1, e.parts.length)), ...perfOnes]
       const rowsOf = doc.rows(evalTbl)
       const labelAt = (label: string) =>
         rowsOf.findIndex((_, r) =>
@@ -459,11 +485,13 @@ export async function renderForm(
      * `tail`(비고 합계)은 위치가 아니라 **마지막 칸**에 넣는다.
      */
     const fillRow = (label: string, values: string[], what: string, tail?: string) => {
-      const ri = doc.rows(evalTbl).findIndex((_, r) =>
-        childrenOf(doc.rows(evalTbl)[r], 'tc').some(
-          (_c, ci) => (doc.cellText(evalTbl, r, ci) ?? '').trim() === label,
-        ),
-      )
+      const ri = doc
+        .rows(evalTbl)
+        .findIndex((_, r) =>
+          childrenOf(doc.rows(evalTbl)[r], 'tc').some(
+            (_c, ci) => (doc.cellText(evalTbl, r, ci) ?? '').trim() === label,
+          ),
+        )
       if (ri < 0) return warn(`Ⅳ '${label}' 행을 찾지 못했습니다`)
 
       const cells = childrenOf(doc.rows(evalTbl)[ri], 'tc')
@@ -516,15 +544,28 @@ export async function renderForm(
 
     fillRow('평가 방법', methodVals, 'Ⅳ 평가 방법')
     fillRow('영역 만점', maxVals, 'Ⅳ 영역 만점')
-    fillRow('반영 비율', cols.map((c) => c.ratio), 'Ⅳ 반영 비율', '100%')
+    fillRow(
+      '반영 비율',
+      cols.map((c) => c.ratio),
+      'Ⅳ 반영 비율',
+      '100%',
+    )
     fillRow(
       '서술형･논술형',
       cols.map((c) => c.essay),
       'Ⅳ 서술·논술',
       `${essayTotal(plan, plan.exam_ratio)}%`,
     )
-    fillRow('성취 기준', cols.map((c) => c.std), 'Ⅳ 성취기준 범위')
-    fillRow('평가 시기', cols.map((c) => c.when), 'Ⅳ 평가 시기')
+    fillRow(
+      '성취 기준',
+      cols.map((c) => c.std),
+      'Ⅳ 성취기준 범위',
+    )
+    fillRow(
+      '평가 시기',
+      cols.map((c) => c.when),
+      'Ⅳ 평가 시기',
+    )
   }
 
   /* ── Ⅴ 성취도 기준표 — 다섯 벌 중 하나만 남긴다 ── */
@@ -590,7 +631,9 @@ export async function renderForm(
     const perfTables = tables.filter(
       (t) => doc.rows(t).length >= 10 && (doc.cellText(t, 1, 0) ?? '').includes('수행 활동 과정'),
     )
-    const exampleTbl = tables.find((t) => (doc.cellText(t, 0, 0) ?? '') === '성취기준' && doc.rows(t).length === 12)
+    const exampleTbl = tables.find(
+      (t) => (doc.cellText(t, 0, 0) ?? '') === '성취기준' && doc.rows(t).length === 12,
+    )
     const examplePara = tops().find((p) => doc.paraText(p).trim() === '예시')
     if (exampleTbl) doc.removeTable(exampleTbl)
     if (examplePara) doc.remove(examplePara)
@@ -701,7 +744,9 @@ export async function renderForm(
   /* ── Ⅺ 성취기준별 성취수준 ────────────────── */
   {
     const stdTables = tables.filter(
-      (t) => doc.cellText(t, 0, 0) === '성취기준' && (doc.cellText(t, 0, 1) ?? '').includes('성취기준별'),
+      (t) =>
+        doc.cellText(t, 0, 0) === '성취기준' &&
+        (doc.cellText(t, 0, 1) ?? '').includes('성취기준별'),
     )
     const areasWithStd = subject.areas.filter((a) =>
       subject.standards.some((s) => s.area_no === a.no),
@@ -781,7 +826,9 @@ export async function renderForm(
         subject.scale_type === 'LVL_3' ? ['A', 'B', 'C'] : ['A', 'B', 'C', 'D', 'E']
       const levels = ai?.sections.semesterLevels ?? subject.semester_levels
       const rows = doc.rows(semTbl)
-      const minRow = rows.findIndex((_, r) => (doc.cellText(semTbl, r, 0) ?? '').includes('최소 성취수준'))
+      const minRow = rows.findIndex((_, r) =>
+        (doc.cellText(semTbl, r, 0) ?? '').includes('최소 성취수준'),
+      )
 
       for (const g of grades) {
         const r = rows.findIndex((_, k) => (doc.cellText(semTbl, k, 0) ?? '').trim() === g)
@@ -805,9 +852,7 @@ export async function renderForm(
           doc.renumber(semTbl)
         }
       }
-      did(
-        `학기단위 성취수준${subject.is_common ? ' + 최소 성취수준' : ' (최소 성취수준 행 제거)'}`,
-      )
+      did(`학기단위 성취수준${subject.is_common ? ' + 최소 성취수준' : ' (최소 성취수준 행 제거)'}`)
     }
   }
 

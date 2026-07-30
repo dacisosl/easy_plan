@@ -286,6 +286,8 @@ export const SCHOOL_SEED: SchoolLayer = {
     exam_ratio: 60,
     perf_ratio: 40,
     perf_area_max: 35,
+    // 정기시험 2회 과목은 상한 완화 — 점검표 "지필 2회 이상 실시 과목은 40% 이하 가능"
+    perf_area_max_relaxed: 40,
     essay_min: 30,
     base_score_min: 20,
     base_score_max: 40,
@@ -294,7 +296,8 @@ export const SCHOOL_SEED: SchoolLayer = {
     notice_lead_weeks: 2,
     guideline_name: '2026학년도 학업성적관리 시행 지침',
     classes_by_grade: { 1: 8, 2: 8, 3: 7 },
-    month_week_rule: 'start',
+    // 목요일이 속한 달로 귀속 — 학교 점검표 확정 규칙 (예: 6/29~7/3 주는 목요일 7/2 → 7월 1주)
+    month_week_rule: 'thursday',
   },
   achievement_tables: ACHIEVEMENT_TABLES,
   sentences: SENTENCES,

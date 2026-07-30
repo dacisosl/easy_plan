@@ -12,8 +12,8 @@ import type {
 } from '@/types'
 import { SCHOOL_SEED } from '@/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '@/data/subject'
-import { distributeStandards, orderedStandardCodes, weeksOf } from '@/lib/derive'
-import { allocatePerfRatios, buildPerformance } from '@/lib/autofill'
+import { distributeStandards, orderedStandardCodes, perfAreaCap, weeksOf } from '@/lib/derive'
+import { allocatePerfRatios, autoStandardCodes, buildPerformance } from '@/lib/autofill'
 import type { ImportedSubject } from '@/lib/importStandards'
 import { unitsFromAreas } from '@/lib/importStandards'
 
@@ -314,8 +314,25 @@ export const usePlanStore = create<State & Actions>()(
         const plan = get().current()
         const subject = get().currentSubject()
         if (!plan || !subject) return
-        const weeks = weeksOf(get().school, plan.semester)
-        get().patchPlan({ distribution: distributeStandards(subject, weeks, plan.exams) })
+        const school = get().school
+        const weeks = weeksOf(school, plan.semester)
+        // 직접 고른 성취기준이 있는 수행평가는 진도 배분의 경계가 된다 —
+        // 실시 주까지 그 성취기준을 다 배우도록 진도를 앞당긴다 (점검표)
+        const distribution = distributeStandards(subject, weeks, plan.exams, plan.performances)
+        // 자동 선정 수행평가는 새 배분에 맞춰 성취기준을 다시 고른다 — 옛 배분의 답을 들고 있으면 안 된다
+        const performances = plan.performances.map((p) =>
+          p.standards_manual
+            ? p
+            : {
+                ...p,
+                standard_codes: autoStandardCodes(
+                  distribution,
+                  p.week,
+                  school.rules.standards_per_perf_max,
+                ),
+              },
+        )
+        get().patchPlan({ distribution, performances })
       },
 
       setWeekStandards: (week, codes) => {
@@ -334,7 +351,7 @@ export const usePlanStore = create<State & Actions>()(
         const others = plan.performances.filter((p) => p.id !== input.id)
         // 비율을 정하지 않으면 남은 몫을 준다. 한 영역 상한(규칙 2)은 넘기지 않는다.
         const usedRatio = others.reduce((s, p) => s + p.ratio, 0)
-        const cap = school.rules.perf_area_max
+        const cap = perfAreaCap(plan, school.rules)
         const ratio = Math.min(cap, input.ratio ?? Math.max(0, plan.perf_ratio - usedRatio))
 
         // 교사가 직접 고른 값은 다시 계산하지 않고 이어 간다
@@ -385,7 +402,20 @@ export const usePlanStore = create<State & Actions>()(
         const plan = get().current()
         if (!plan) return
         get().patchPlan({
-          performances: plan.performances.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+          performances: plan.performances.map((p) => {
+            if (p.id !== id) return p
+            const next = { ...p, ...patch }
+            // 실시 주차가 바뀌면 자동 선정 성취기준은 새 주차 기준으로 다시 고른다 —
+            // 옛 주차의 답을 들고 있으면 규칙 16(진도 선행)에 걸린다
+            if (patch.week !== undefined && !p.standards_manual) {
+              next.standard_codes = autoStandardCodes(
+                plan.distribution,
+                next.week,
+                get().school.rules.standards_per_perf_max,
+              )
+            }
+            return next
+          }),
           ai: undefined,
         })
       },
@@ -411,7 +441,7 @@ export const usePlanStore = create<State & Actions>()(
         const ratios = allocatePerfRatios(
           plan.perf_ratio,
           plan.performances.length,
-          get().school.rules.perf_area_max,
+          perfAreaCap(plan, get().school.rules),
         )
         const next = plan.performances.map((p, i) => ({ ...p, ratio: ratios[i] ?? p.ratio }))
         // 만점·기본점수가 비율에서 나오므로 buildPerformance를 다시 태운다
@@ -437,7 +467,7 @@ export const usePlanStore = create<State & Actions>()(
     }),
     {
       name: 'easy-plan',
-      version: 4,
+      version: 5,
       /**
        * v3 — 진도 배분이 단원 id에서 성취기준 코드로 바뀌었고,
        * 학사일정이 학기별 배열이 되었으며, 비율이 학기 레이어로 내려왔다.
@@ -447,6 +477,18 @@ export const usePlanStore = create<State & Actions>()(
        */
       migrate: (persisted, version) => {
         const state = persisted as Partial<State> & Record<string, unknown>
+
+        /*
+         * v5 — 학교 점검표 반영. 월 주차 라벨을 목요일 기준으로 통일하고
+         * (점검표 확정 규칙 — 예전 값이 남아 있으면 시험 시기가 '6월 5주'로 어긋난다),
+         * 새 규칙값(perf_area_max_relaxed)을 보충한다.
+         * distribution·performances는 건드리지 않는다 — 교사가 만진 값을 덮으면 안 되고,
+         * 어긋남은 검증(규칙 16)이 잡아서 사람에게 알린다.
+         */
+        if (version < 5 && state.school?.rules) {
+          state.school.rules.month_week_rule = 'thursday'
+          state.school.rules.perf_area_max_relaxed ??= 40
+        }
         if (version >= 4) return state as unknown as State & Actions
 
         /*

@@ -44,6 +44,8 @@ export interface SchoolRules {
   perf_ratio: number
   /** 수행평가 한 영역 상한 (%) */
   perf_area_max: number
+  /** 정기시험을 2회 실시하는 과목의 완화된 영역 상한 (%) — 학교 점검표 "지필 2회 과목은 40% 가능" */
+  perf_area_max_relaxed: number
   /** 서술·논술 하한 (%) */
   essay_min: number
   /** 기본점수 범위 (영역 만점 대비 %) */
@@ -60,12 +62,13 @@ export interface SchoolRules {
   /** 학년별 반 수 */
   classes_by_grade: Record<number, number>
   /**
-   * 월 기준 주차 표기 방식 (미확정 항목 — 담당자 확인 필요).
-   *  'start'        : 시작일이 속한 달에서 몇 번째로 시작하는 주인지  (정의서 4-1 확정 규칙)
-   *  'form_example' : 그 달 1일이 낀 주를 1주로 두고 세기            (배포된 양식 예시)
-   * 두 방식은 같은 주라도 라벨이 한 주씩 밀린다. 6월만 우연히 일치한다.
+   * 월 기준 주차 표기 방식.
+   *  'thursday'     : 목요일이 속한 달로 귀속 (학교 점검표 확정 규칙 — 기본값)
+   *  'start'        : 시작일이 속한 달에서 몇 번째로 시작하는 주인지
+   *  'form_example' : 그 달 1일이 낀 주를 1주로 두고 세기 (배포된 양식 예시)
+   * 방식에 따라 같은 주라도 라벨이 한 주씩 밀린다. (6/29~7/3 → 목요일 기준 7월 1주, 시작일 기준 6월 5주)
    */
-  month_week_rule: 'start' | 'form_example'
+  month_week_rule: 'start' | 'form_example' | 'thursday'
 }
 
 /** 1-3. 성취도 기준표 (5종) */

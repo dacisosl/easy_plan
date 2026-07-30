@@ -13,6 +13,7 @@ import { ChipPicker, ConfirmDialog, Field, Fieldset, Screen } from '@/components
 import { SubjectPicker, type SubjectDraft } from '@/components/SubjectPicker'
 import { usePlanStore } from '@/store/usePlanStore'
 import {
+  essayExempt,
   essayTotal,
   examRatioOf,
   monthWeekLabel,
@@ -243,7 +244,11 @@ function HeroScreen({
               </h1>
               {/* 이 도구가 하려는 말 — 한 글자씩 찍어 눈이 한 번 더 머물게 한다 */}
               <p className="mt-4 min-h-[27px] text-center text-[18px] text-ink-2">
-                <Typewriter text="이제 진짜 ‘계획’에만 집중해주세요." startDelay={1650} speed={78} />
+                <Typewriter
+                  text="이제 진짜 ‘계획’에만 집중해주세요."
+                  startDelay={1650}
+                  speed={78}
+                />
               </p>
 
               {/* 이 화면의 할 일은 하나 — 검색줄이 곧 시작 버튼이다 */}
@@ -312,7 +317,11 @@ const MIN_SHOW_MS = LOADING_STEPS.length * LOADING_STEP_MS
  * 이 문장이 이 도구가 하려는 말이라 눈이 한 번 더 머물러야 한다.
  * 따옴표로 묶인 부분만 굵게 — 다 찍힌 뒤가 아니라 찍히는 대로 굵어진다.
  */
-function Typewriter({ text, startDelay = 0, speed = 55 }: {
+function Typewriter({
+  text,
+  startDelay = 0,
+  speed = 55,
+}: {
   text: string
   startDelay?: number
   speed?: number
@@ -368,7 +377,10 @@ function Typewriter({ text, startDelay = 0, speed = 55 }: {
 function LoadingBar() {
   const [at, setAt] = useState(0)
   useEffect(() => {
-    const t = setInterval(() => setAt((i) => Math.min(i + 1, LOADING_STEPS.length - 1)), LOADING_STEP_MS)
+    const t = setInterval(
+      () => setAt((i) => Math.min(i + 1, LOADING_STEPS.length - 1)),
+      LOADING_STEP_MS,
+    )
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -469,7 +481,12 @@ function PlanForm({
   /* 지도교사는 타이핑 중 쪼개지 않게 debounce */
   const [teachers, setTeachers] = useState(plan.teachers.join(', '))
   useDebounced(teachers, (v) =>
-    patchPlan({ teachers: v.split(',').map((t) => t.trim()).filter(Boolean) }),
+    patchPlan({
+      teachers: v
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
+    }),
   )
 
   /**
@@ -555,7 +572,10 @@ function PlanForm({
       ...e,
       ratio: e.no === no ? val : examRatioOf(plan, e.no),
     }))
-    const sum = Math.min(100, exams.reduce((s, e) => s + (e.ratio ?? 0), 0))
+    const sum = Math.min(
+      100,
+      exams.reduce((s, e) => s + (e.ratio ?? 0), 0),
+    )
     patchPlan({ exams, exam_ratio: sum, perf_ratio: 100 - sum })
     setTimeout(rebalancePerfRatios, 0)
   }
@@ -617,8 +637,6 @@ function PlanForm({
   }
 
   /* ── 서술·논술형 ──────────────────────────── */
-
-
 
   /** 수행평가 하나의 서술·논술 비율을 직접 정한다 */
   const setPerfEssay = (perfId: string, pct: number) => {
@@ -818,7 +836,6 @@ function PlanForm({
           </div>
         )}
 
-
         {(firstError('exam') || firstError('anchor')) && (
           <span className="text-[13px] text-red sm:pl-[116px]">
             {firstError('exam') ?? firstError('anchor')}
@@ -884,14 +901,16 @@ function PlanForm({
             <span className={ratioSum === 100 ? 'text-ink-2' : 'font-semibold text-amber'}>
               반영 합계 {ratioSum}%{ratioSum !== 100 && (ratioSum < 100 ? ' · 모자람' : ' · 넘침')}
             </span>
+            {/* 1단위·수행 80%↑ 과목은 서논술 하한 자체가 면제라 빨간 경고를 띄우지 않는다 */}
             <span
               className={
-                essay < school.rules.essay_min
+                essay < school.rules.essay_min && !essayExempt(plan)
                   ? 'font-semibold text-red'
                   : 'font-semibold text-navy'
               }
             >
               서논술 {essay}% / {school.rules.essay_min}%
+              {essayExempt(plan) && <span className="ml-1 font-normal text-ink-3">(면제)</span>}
             </span>
             <span className="text-ink-2">
               지필 {essay - perfEssayTotal(plan)}% + 수행 {perfEssayTotal(plan)}%
@@ -911,11 +930,11 @@ function PlanForm({
         }
         error={firstError('perf')}
       >
-        {plan.performances.length === 0 ? null : (
-          plan.performances.map((p) => (
-            <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
-          ))
-        )}
+        {plan.performances.length === 0
+          ? null
+          : plan.performances.map((p) => (
+              <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
+            ))}
       </Fieldset>
 
       <div className="flex items-center gap-4 border-t border-line-soft pt-6">
@@ -1309,4 +1328,3 @@ function PerfCard({
     </div>
   )
 }
-

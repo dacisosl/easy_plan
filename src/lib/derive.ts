@@ -11,6 +11,7 @@ import type {
   ISODate,
   Performance,
   SchoolLayer,
+  SchoolRules,
   SemesterPlan,
   Sentence,
   Subject,
@@ -66,18 +67,45 @@ export function monthWeekByFormExample(weeks: Week[], no: number): string {
   })
   // 1일이 학사일정 밖이면(개학 전 등) 그 달에 처음 시작하는 주를 1주로 본다
   const base =
-    anchorIdx >= 0
-      ? anchorIdx
-      : weeks.findIndex((x) => parseDate(x.start).getMonth() + 1 === month)
+    anchorIdx >= 0 ? anchorIdx : weeks.findIndex((x) => parseDate(x.start).getMonth() + 1 === month)
 
   return `${month}월 ${idx - base + 1}주`
 }
 
+/**
+ * 그 주의 목요일. 주 시작일이 낀 달력 주(월~일)의 목요일이라, 학기 마지막 주가
+ * 화요일에 끝나도(7/20~21) 같은 달력 주의 목요일(7/23)로 셈한다 — 라벨 공백이 안 생긴다.
+ */
+function thursdayOf(w: Week): Date {
+  const s = parseDate(w.start)
+  const d = new Date(s)
+  d.setDate(s.getDate() + ((4 - s.getDay() + 7) % 7)) // getDay(): 목요일 = 4
+  return d
+}
+
+/**
+ * 학교 확정 규칙: 목요일이 속한 달로 귀속하고, 그 달에 목요일이 있는 주 중 몇 번째인지 센다.
+ * (6/29~7/3 → 목요일 7/2 → 7월 1주. 시작일 기준으로는 6월 5주였다.)
+ */
+export function monthWeekByThursday(weeks: Week[], no: number): string {
+  const w = weeks.find((x) => x.no === no)
+  if (!w) return ''
+  const month = thursdayOf(w).getMonth() + 1
+  const sameMonth = weeks.filter((x) => thursdayOf(x).getMonth() + 1 === month)
+  const n = sameMonth.findIndex((x) => x.no === no) + 1
+  return `${month}월 ${n}주`
+}
+
 export function monthWeekLabel(school: SchoolLayer, semester: 1 | 2, no: number): string {
   const weeks = weeksOf(school, semester)
-  return school.rules.month_week_rule === 'form_example'
-    ? monthWeekByFormExample(weeks, no)
-    : monthWeekByStart(weeks, no)
+  switch (school.rules.month_week_rule) {
+    case 'form_example':
+      return monthWeekByFormExample(weeks, no)
+    case 'start':
+      return monthWeekByStart(weeks, no)
+    default:
+      return monthWeekByThursday(weeks, no)
+  }
 }
 
 /**
@@ -130,18 +158,13 @@ export interface WeekHours {
  * 양식 메모7이 "주당 이수시간별로 배포해드린 표를 활용"하라고 하므로,
  * 배포표가 들어오면 계산값을 덮는다.
  */
-export function scheduledHours(
-  school: SchoolLayer,
-  semester: 1 | 2,
-  credit: number,
-): WeekHours[] {
+export function scheduledHours(school: SchoolLayer, semester: 1 | 2, credit: number): WeekHours[] {
   const weeks = weeksOf(school, semester)
   const table = school.hourly_tables?.[credit]
   let acc = 0
   return weeks.map((w, i) => {
     const planned =
-      table?.[i] ??
-      Math.round((credit * Math.min(w.class_days, FULL_WEEK_DAYS)) / FULL_WEEK_DAYS)
+      table?.[i] ?? Math.round((credit * Math.min(w.class_days, FULL_WEEK_DAYS)) / FULL_WEEK_DAYS)
     acc += planned
     return { no: w.no, planned, cumulative: acc }
   })
@@ -281,19 +304,38 @@ function allocateSegment(codes: string[], weeks: Week[]): Record<number, string[
  * 앵커 성취기준을 기준으로 구간을 나누고, 각 구간을 그 구간의 수업 주에 배분한다.
  * 앵커가 비어 있는 회차는 경계로 쓰지 않고 앞뒤 구간을 합친다.
  *
+ * 수행평가도 경계가 된다 — 교사가 성취기준을 **직접 고른** 수행평가는, 그 성취기준을
+ * 실시 주까지 다 배우도록 진도를 앞당겨야 한다(점검표: "실시일까지 진도가 나갔는지").
+ * 자동 선정 수행평가는 경계로 쓰지 않는다 — 자동 선정 자체가 이 배분에서 파생되므로
+ * 경계로 삼으면 순환이다. 수행평가 경계로 구간이 주당 3개를 넘게 과밀해지면 그 경계만
+ * 버린다 — 불가능한 진도를 강제로 짜느니 검증(규칙 16)이 사람에게 알리게 한다.
+ *
  * 반환: 주차 번호 → 성취기준 코드 목록. (파생값이지만 교사가 손댈 수 있어 학기 레이어에 저장한다)
  */
 export function distributeStandards(
   subject: Pick<Subject, 'units' | 'standards'>,
   weeks: Week[],
   exams: { week: number; anchor_code: string | null }[],
+  performances: Pick<Performance, 'week' | 'standard_codes' | 'standards_manual'>[] = [],
 ): Record<number, string[]> {
   const codes = orderedStandardCodes(subject)
   const result: Record<number, string[]> = {}
   if (codes.length === 0) return result
 
   const tWeeks = teachingWeeks(weeks)
-  const sorted = [...exams].sort((a, b) => a.week - b.week)
+
+  // 수행평가 경계: 고른 성취기준 중 진도 순서상 마지막 코드를 실시 주까지 끝내야 한다
+  const perfBounds = performances
+    .filter((p) => p.standards_manual && p.standard_codes.length > 0)
+    .map((p) => {
+      const idxs = p.standard_codes.map((c) => codes.indexOf(c)).filter((i) => i >= 0)
+      const last = Math.max(...idxs, -1)
+      return { week: p.week, anchor_code: last >= 0 ? codes[last] : null, fromPerf: true }
+    })
+
+  const sorted = [...exams.map((e) => ({ ...e, fromPerf: false })), ...perfBounds].sort(
+    (a, b) => a.week - b.week || Number(a.fromPerf) - Number(b.fromPerf),
+  ) // 같은 주면 시험 먼저
 
   const codeSegments: string[][] = []
   const weekSegments: Week[][] = []
@@ -305,6 +347,8 @@ export function distributeStandards(
     if (a < cStart) continue // 앵커 미선택이거나 순서가 어긋나면 경계로 쓰지 않는다
     const wEnd = tWeeks.findIndex((w) => w.no > e.week)
     const wCut = wEnd < 0 ? tWeeks.length : wEnd
+    // 수행평가 경계가 만들 구간이 주당 상한을 넘으면 무리다 — 이 경계는 버린다
+    if (e.fromPerf && a + 1 - cStart > (wCut - wStart) * MAX_PER_WEEK) continue
     codeSegments.push(codes.slice(cStart, a + 1))
     weekSegments.push(tWeeks.slice(wStart, wCut))
     cStart = a + 1
@@ -328,7 +372,10 @@ export function isContinued(
   return (distribution[week - 1] ?? []).includes(code)
 }
 
-export function feasibility(subject: Pick<Subject, 'units' | 'standards'>, weeks: Week[]): Feasibility {
+export function feasibility(
+  subject: Pick<Subject, 'units' | 'standards'>,
+  weeks: Week[],
+): Feasibility {
   const tw = teachingWeeks(weeks).length
   const n = orderedStandardCodes(subject).length
   if (tw === 0) {
@@ -367,6 +414,27 @@ export function noticeWeek(perf: Performance, leadWeeks: number): number {
 /** 영역 만점은 반영 비율에서 나온다 (총점 100점 기준) */
 export function areaMaxFromRatio(ratio: number): number {
   return ratio
+}
+
+/**
+ * 이 계획서의 수행평가 한 영역 상한(%).
+ * 점검표: 기본 35%, 단 정기시험을 2회 실시하는 과목은 40%까지.
+ * 검증(규칙 2)·비율 자동 배분·입력 상한이 전부 이 하나를 봐야 값이 안 어긋난다.
+ */
+export function perfAreaCap(
+  plan: Pick<SemesterPlan, 'exam_count'>,
+  rules: Pick<SchoolRules, 'perf_area_max' | 'perf_area_max_relaxed'>,
+): number {
+  return plan.exam_count >= 2 ? rules.perf_area_max_relaxed : rules.perf_area_max
+}
+
+/**
+ * 서·논술형 30% 검증을 면제받는 계획서인가.
+ * 점검표: 1단위(주당 1시간) 과목, 또는 수행평가가 80% 이상인 과목은 해당 조항 삭제.
+ * 검증(규칙 3)과 Ⅲ-2 마 항목 삭제(renderForm)가 같은 판단을 공유한다.
+ */
+export function essayExempt(plan: Pick<SemesterPlan, 'credit' | 'perf_ratio'>): boolean {
+  return plan.credit === 1 || plan.perf_ratio >= 80
 }
 
 /** 반영 비율 합계 — 정기시험 + 수행평가 전 영역 */
