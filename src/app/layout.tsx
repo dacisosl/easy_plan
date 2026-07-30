@@ -1,9 +1,26 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
+/**
+ * 링크를 공유했을 때 보이는 얼굴.
+ *
+ * 제목은 문서 이름이 아니라 도구 이름으로 — '교수학습 및 평가 운영계획서'는
+ * 만들어지는 문서지 이 앱이 아니다. metadataBase가 있어야 og:image가 절대 주소가
+ * 된다 — 카카오톡·메신저는 상대 경로 이미지를 못 읽는다.
+ */
 export const metadata: Metadata = {
-  title: '교수학습 및 평가 운영계획서',
-  description: '값을 한 번만 입력해 계획서 전체를 만드는 도구',
+  metadataBase: new URL('https://edit--edit-help.us-east4.hosted.app'),
+  title: '평가계획 편집기',
+  description: '선생님, 편집은 제가 합니다 — 입력은 한 번, 20쪽 계획서는 자동 완성.',
+  icons: { icon: '/school-logo.png' },
+  openGraph: {
+    title: '평가계획 편집기',
+    description: '선생님, 편집은 제가 합니다 — 입력은 한 번, 20쪽 계획서는 자동 완성.',
+    type: 'website',
+    locale: 'ko_KR',
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: '평가계획 편집기' }],
+  },
+  twitter: { card: 'summary_large_image' },
 }
 
 /**
