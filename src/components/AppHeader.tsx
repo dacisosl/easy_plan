@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useMe } from '@/components/AuthGate'
+import { Portal } from '@/components/ui'
 import { signInWithGoogle, signOutEverywhere } from '@/lib/firebase/client'
 import { usePlanStore, type ScreenId } from '@/store/usePlanStore'
 
@@ -195,16 +196,7 @@ export function AppHeader() {
            * 로컬(설정 없음)에서는 아무것도 안 보인다. 없는 문을 그려 두면 눌러 보게 된다.
            */}
           {me?.authDisabled ? null : me?.email ? (
-            <button
-              className="btn btn-sm btn-ghost max-w-[120px] truncate whitespace-nowrap"
-              title={`${me.email} — 로그아웃`}
-              onClick={() => {
-                if (window.confirm('로그아웃할까요?'))
-                  signOutEverywhere().then(() => window.location.reload())
-              }}
-            >
-              {me.displayName ?? me.email}
-            </button>
+            <UserMenu name={me.displayName ?? me.email} email={me.email} />
           ) : (
             <button
               className="btn btn-sm whitespace-nowrap"
@@ -218,5 +210,124 @@ export function AppHeader() {
         </div>
       </div>
     </header>
+  )
+}
+
+/* ── 로그인한 사람 메뉴 — 이름을 누르면 이름 변경 · 로그아웃 ── */
+
+function UserMenu({ name, email }: { name: string; email: string }) {
+  const [open, setOpen] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+
+  return (
+    <div className="relative">
+      <button
+        className="btn btn-sm btn-ghost max-w-[120px] truncate whitespace-nowrap"
+        title={email}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {name}
+      </button>
+
+      {open && (
+        <>
+          {/* 바깥을 누르면 닫힌다 */}
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute top-full right-0 z-30 mt-1.5 flex w-36 flex-col overflow-hidden rounded-control border border-line-input bg-surface py-1 shadow-lg">
+            <span className="truncate border-b border-line-soft px-3.5 pt-1 pb-2 text-[12px] text-ink-3">
+              {email}
+            </span>
+            <button
+              className="cursor-pointer border-0 bg-transparent px-3.5 py-2 text-left text-[13.5px] text-ink hover:bg-surface-sub"
+              onClick={() => {
+                setOpen(false)
+                setRenaming(true)
+              }}
+            >
+              이름 변경
+            </button>
+            <button
+              className="cursor-pointer border-0 bg-transparent px-3.5 py-2 text-left text-[13.5px] text-ink hover:bg-surface-sub"
+              onClick={() => signOutEverywhere().then(() => window.location.reload())}
+            >
+              로그아웃
+            </button>
+          </div>
+        </>
+      )}
+
+      {renaming && <RenameDialog current={name} onClose={() => setRenaming(false)} />}
+    </div>
+  )
+}
+
+/** 표시 이름 바꾸기 — 처음 정할 때(NameStep)와 같은 규칙: 2~20자 */
+function RenameDialog({ current, onClose }: { current: string; onClose: () => void }) {
+  const [value, setValue] = useState(current)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const len = [...value.trim()].length
+  const ready = len >= 2 && len <= 20 && value.trim() !== current
+
+  const save = async () => {
+    setError(null)
+    setBusy(true)
+    try {
+      const res = await fetch('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: value.trim() }),
+      })
+      const body = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(body.error ?? '저장하지 못했습니다')
+      // 이름은 여러 곳(헤더·승인 명단)이 본다 — 새로 읽는 것이 가장 확실하다
+      window.location.reload()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '저장하지 못했습니다')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Portal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,28,36,0.35)] p-0 sm:p-6"
+        onClick={onClose}
+      >
+        <div
+          className="mx-4 flex w-full max-w-[340px] flex-col gap-4 rounded-card bg-surface p-6"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="text-base font-semibold">이름 변경</span>
+          <input
+            className="control"
+            value={value}
+            maxLength={20}
+            autoFocus
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && ready && !busy) save()
+              if (e.key === 'Escape') onClose()
+            }}
+          />
+          <span className="h-4 text-[12.5px] text-ink-3">
+            {error ? (
+              <span className="text-red">{error}</span>
+            ) : (
+              `${len}/20 · 계획서와 승인 명단에 쓰입니다`
+            )}
+          </span>
+          <div className="flex items-center justify-end gap-2">
+            <button className="btn btn-sm btn-ghost" onClick={onClose}>
+              취소
+            </button>
+            <button className="btn btn-sm" disabled={!ready || busy} onClick={save}>
+              {busy ? '저장 중…' : '저장'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Portal>
   )
 }
