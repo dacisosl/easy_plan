@@ -101,9 +101,13 @@ export function AppHeader() {
               onError={() => setLogoMissing(true)}
             />
           )}
-          {/* '편집'만 굵게 — 이 도구가 대신 해 주는 일이 그것이다 */}
+          {/*
+           * '편집'만 굵게 — 이 도구가 대신 해 주는 일이 그것이다.
+           * 휴대폰에서 편집 중일 때는 이름을 접는다 — 좁은 띠에 제목이 세로로 꺾여
+           * 쏟아지느니 마크 하나가 낫다. 앱 이름은 첫 화면이 이미 말해 준다.
+           */}
           <span
-            className="text-[18px] font-medium tracking-[-0.02em] text-ink"
+            className={`text-[18px] font-medium tracking-[-0.02em] text-ink ${plan ? 'hidden sm:inline' : ''}`}
             style={{ fontFamily: 'var(--font-title)' }}
           >
             평가계획 <b className="font-extrabold">편집</b>기
@@ -112,13 +116,14 @@ export function AppHeader() {
 
         {/* 첫 화면에는 안내를 두지 않는다 — 화면 한가운데가 이미 그 말을 하고 있다 */}
         {plan && subject ? (
+          /* 휴대폰에서는 '편집 중' 하나만 — 과목 이름은 바로 아래 폼이 이미 말하고 있다 */
           <div className="nameplate justify-self-center">
             <span className="hidden text-ink-2 sm:inline">
               {year}학년도 {plan.semester}학기
             </span>
             <span className="hidden text-ink-4 sm:inline">·</span>
-            <span className="font-semibold text-ink">{subject.name}</span>
-            <span className="ml-0.5 flex items-center gap-1.5 border-l border-line-input pl-2.5 text-navy">
+            <span className="hidden font-semibold text-ink sm:inline">{subject.name}</span>
+            <span className="flex items-center gap-1.5 text-navy sm:ml-0.5 sm:border-l sm:border-line-input sm:pl-2.5">
               <span className="pulse-dot" />
               {DOING[screen]}
             </span>
@@ -133,10 +138,15 @@ export function AppHeader() {
          *   만든 뒤·관리자 → 이전 · 홈
          * '새 계획서'는 없앴다 — 첫 화면으로 돌아가면 거기서 새로 시작하게 된다.
          */}
+        {/*
+         * 휴대폰에서는 이전·홈을 접는다 — 로고(처음으로)와 폼 안의 '과목 바꾸기'가
+         * 같은 길을 이미 내주고 있다. 좁은 띠에는 다른 데 없는 것만 남긴다:
+         * 편집중 · 로봇(참고자료) · 인증.
+         */}
         <div className="flex items-center gap-2 justify-self-end">
           {currentPlanId && (
             <button
-              className="btn btn-sm btn-ghost whitespace-nowrap"
+              className="btn btn-sm btn-ghost hidden whitespace-nowrap sm:inline-flex"
               onClick={screen === 'home' ? startNew : () => go('home')}
             >
               이전
@@ -144,7 +154,7 @@ export function AppHeader() {
           )}
           {screen !== 'home' && (
             <button
-              className="btn btn-sm btn-ghost whitespace-nowrap"
+              className="btn btn-sm btn-ghost hidden whitespace-nowrap sm:inline-flex"
               onClick={startNew}
               title="첫 화면으로"
             >
