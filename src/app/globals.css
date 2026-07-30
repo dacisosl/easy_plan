@@ -86,7 +86,13 @@
 }
 
 @layer base {
+  html {
+    /* iOS가 가로로 돌릴 때 글씨를 제멋대로 키우는 것을 막는다 */
+    -webkit-text-size-adjust: 100%;
+  }
   body {
+    /* 긴 성취기준 코드가 칸을 밀어 화면을 넘기지 않게 */
+    overflow-wrap: break-word;
     background: var(--color-bg);
     color: var(--color-ink);
     font-family: var(--font-sans);

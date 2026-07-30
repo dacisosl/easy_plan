@@ -1,9 +1,20 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
   title: '교수학습 및 평가 운영계획서',
   description: '값을 한 번만 입력해 계획서 전체를 만드는 도구',
+}
+
+/**
+ * ★ 이게 없으면 휴대폰이 980px짜리 화면인 척 그린 뒤 통째로 축소해 보여 준다.
+ * 글씨가 개미만 해지고 두 손가락으로 확대해야 읽힌다. 반응형의 출발점이다.
+ *
+ * 확대는 막지 않는다(maximumScale 지정 안 함) — 눈이 불편한 분이 키워 볼 권리를 뺏으면 안 된다.
+ */
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

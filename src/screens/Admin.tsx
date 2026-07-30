@@ -136,8 +136,8 @@ function CalendarTab({
         </span>
       </div>
 
-      <div className="list">
-        <div className="list-head grid grid-cols-[56px_130px_130px_90px_1fr_90px] gap-3">
+      <div className="list overflow-x-auto">
+        <div className="list-head grid min-w-[720px] grid-cols-[56px_130px_130px_90px_1fr_90px] gap-3">
           <div>주</div>
           <div>시작</div>
           <div>종료</div>
@@ -148,7 +148,7 @@ function CalendarTab({
         {cal.weeks.map((w) => (
           <div
             key={w.no}
-            className="grid grid-cols-[56px_130px_130px_90px_1fr_90px] items-center gap-3 border-b border-line-soft px-6 py-2 last:border-b-0"
+            className="grid min-w-[720px] grid-cols-[56px_130px_130px_90px_1fr_90px] items-center gap-3 border-b border-line-soft px-6 py-2 last:border-b-0"
           >
             <span className="text-sm text-ink-2">{w.no}주</span>
             <input
@@ -322,7 +322,7 @@ function RulesTab() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
         {NUM.map((f) => (
           <label key={String(f.key)} className="flex flex-col gap-2">
             <span className="label">{f.label}</span>

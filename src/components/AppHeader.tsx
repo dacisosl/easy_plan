@@ -52,7 +52,7 @@ export function AppHeader() {
        * 좌우를 1fr로 잡아 가운데가 진짜 가운데에 오게 한다. justify-between으로 두면
        * 로고(130px)와 버튼(78px) 폭이 달라 가운데가 26px쯤 밀린다.
        */}
-      <div className="mx-auto grid h-16 max-w-[880px] grid-cols-[1fr_auto_1fr] items-center px-6">
+      <div className="mx-auto grid h-16 max-w-[880px] grid-cols-[auto_1fr_auto] items-center gap-2 px-4 sm:grid-cols-[1fr_auto_1fr] sm:px-6">
         {/*
          * 로고를 두 번 누르면 관리자로 들어간다.
          * 학사일정·배포표를 만지는 자리라 교사가 실수로 들어갈 일이 없어야 한다.
@@ -90,10 +90,10 @@ export function AppHeader() {
         {/* 첫 화면에는 안내를 두지 않는다 — 화면 한가운데가 이미 그 말을 하고 있다 */}
         {plan && subject ? (
           <div className="nameplate justify-self-center">
-            <span className="text-ink-2">
+            <span className="hidden text-ink-2 sm:inline">
               {year}학년도 {plan.semester}학기
             </span>
-            <span className="text-ink-4">·</span>
+            <span className="hidden text-ink-4 sm:inline">·</span>
             <span className="font-semibold text-ink">{subject.name}</span>
             <span className="ml-0.5 flex items-center gap-1.5 border-l border-line-input pl-2.5 text-navy">
               <span className="pulse-dot" />
@@ -153,7 +153,7 @@ export function AppHeader() {
               <path d="M9 11v1.6M15 11v1.6" />
               <path d="M9.4 15.2h5.2" />
             </svg>
-            참고자료
+            <span className="hidden sm:inline">참고자료</span>
           </button>
         </div>
       </div>

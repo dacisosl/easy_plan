@@ -214,7 +214,7 @@ function HeroScreen({
               phase === 'leaving' ? 'stage-out' : 'fade-in'
             }`}
           >
-            <p className="text-center text-[clamp(20px,2.6vw,30px)] leading-[1.45] font-medium tracking-[-0.02em] text-ink-2">
+            <p className="text-center text-[clamp(19px,3.4vw,30px)] leading-[1.45] font-medium tracking-[-0.02em] text-ink-2">
               평가계획서 편집하느라
               <br />
               그동안 너무 <span className="font-semibold text-red">화</span>나셨나요?
@@ -234,7 +234,7 @@ function HeroScreen({
                * '선생님,' 하고 한 박자 쉬었다가 나머지가 들어온다.
                * 부르고 → 답하는 말맛이 생긴다. 자리는 미리 잡아 두므로 줄이 밀리지 않는다.
                */}
-              <h1 className="text-center text-[clamp(34px,5vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
+              <h1 className="text-center text-[clamp(26px,6.4vw,56px)] leading-[1.2] font-semibold tracking-[-0.035em] text-ink">
                 선생님,{' '}
                 <span className="stage-in-late inline-block">
                   <span className="text-red">편집</span>은{' '}
@@ -654,7 +654,7 @@ function PlanForm({
         error={firstError('basic')}
       >
         {pickError && <span className="text-[13px] text-red">{pickError}</span>}
-        <div className="field-box grid grid-cols-[0.7fr_0.8fr_1.5fr_0.7fr_1fr] gap-3">
+        <div className="field-box grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[0.7fr_0.8fr_1.5fr_0.7fr_1fr]">
           <Field label="학년">
             <select
               className="control"
@@ -733,8 +733,8 @@ function PlanForm({
             : 'border-line-card bg-surface-sub'
         }`}
       >
-        <div className="flex items-center gap-3">
-          <h2 className="fs-title w-[104px] shrink-0">정기시험</h2>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <h2 className="fs-title shrink-0 sm:w-[104px]">정기시험</h2>
           <div className="flex flex-1 flex-wrap items-center gap-2">
             {([2, 1] as const).map((n) => (
               <button
@@ -776,9 +776,9 @@ function PlanForm({
          * 바로 고칠 수 있게 둔다. 한 번 더 누르게 할 만큼 깊은 설정이 아니다.
          */}
         {plan.exam_count > 0 && (
-          <div id="fs-anchor" className="flex items-center gap-3">
-            <h3 className="fs-title w-[104px] shrink-0">시험범위</h3>
-            <div className="flex min-w-0 flex-1 gap-3">
+          <div id="fs-anchor" className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <h3 className="fs-title shrink-0 sm:w-[104px]">시험범위</h3>
+            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:gap-3">
               {plan.exams.map((e) => (
                 /*
                  * 닫혀 있을 때는 회차와 코드만, 펼치면 성취기준 문장까지 보인다.
@@ -820,7 +820,7 @@ function PlanForm({
 
 
         {(firstError('exam') || firstError('anchor')) && (
-          <span className="pl-[116px] text-[13px] text-red">
+          <span className="text-[13px] text-red sm:pl-[116px]">
             {firstError('exam') ?? firstError('anchor')}
           </span>
         )}
@@ -849,9 +849,9 @@ function PlanForm({
            * 폼 폭이 880px로 고정이라 화면 크기와 무관하게 두 열로 간다.
            * (좁은 화면만 한 열 — sm 미만)
            */}
-          <div className="grid gap-x-7 gap-y-2 sm:grid-cols-2">
+          <div className="grid gap-x-7 gap-y-2 lg:grid-cols-2">
             <RatioHead />
-            <RatioHead className="hidden sm:grid" />
+            <RatioHead className="hidden lg:grid" />
 
             {plan.exams.map((e) => (
               <RatioRow
@@ -1109,7 +1109,7 @@ function SubjectChip({
 
   if (editing) {
     return (
-      <span className="inline-flex w-[320px] items-center gap-2">
+      <span className="inline-flex w-full max-w-[320px] items-center gap-2">
         <SubjectPicker
           value={name}
           autoFocus
@@ -1192,7 +1192,7 @@ function PerfCard({
       </button>
 
       {/* 라벨 높이를 고정해 칸끼리 어긋나지 않게 한다. 비율은 '비율 조정'에서 정한다 */}
-      <div className="grid grid-cols-[1.6fr_1fr_auto] items-start gap-3 pr-11">
+      <div className="grid grid-cols-1 items-start gap-3 pr-11 sm:grid-cols-[1.6fr_1fr_auto]">
         <label className="flex flex-col gap-2">
           <span className="label label-over flex h-5 items-center gap-2">
             명칭
