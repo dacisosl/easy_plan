@@ -145,8 +145,9 @@ export function AppHeader() {
          */}
         <div className="flex items-center gap-2 justify-self-end">
           {currentPlanId && (
+            {/* max-sm:hidden — display를 갈아끼우면(sm:inline-flex) 버튼의 세로 중앙정렬이 깨진다 */}
             <button
-              className="btn btn-sm btn-ghost hidden whitespace-nowrap sm:inline-flex"
+              className="btn btn-sm btn-ghost whitespace-nowrap max-sm:hidden"
               onClick={screen === 'home' ? startNew : () => go('home')}
             >
               이전
@@ -154,7 +155,7 @@ export function AppHeader() {
           )}
           {screen !== 'home' && (
             <button
-              className="btn btn-sm btn-ghost hidden whitespace-nowrap sm:inline-flex"
+              className="btn btn-sm btn-ghost whitespace-nowrap max-sm:hidden"
               onClick={startNew}
               title="첫 화면으로"
             >
