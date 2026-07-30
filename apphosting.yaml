@@ -35,13 +35,11 @@ env:
   # AI 문안용 열쇠. 파일에 적지 않고 Secret Manager에 맡긴다.
   # RUNTIME만 준다 — 빌드 때는 쓸 일이 없고, 안 주는 쪽이 새어 나갈 길이 하나 적다.
   #
-  # ★ 지금은 꺼 둔 상태다. 비밀이 Secret Manager에 아직 없어서, 참조만 있으면
-  #   출시가 시작조차 못 한다. 키가 없어도 앱은 돈다 — AI 문안만 고정 문구로 나온다.
-  #   켜는 법: 아래 명령으로 비밀을 만들고(백엔드 접근 허용까지 Yes), 주석을 푼다.
-  #     npx firebase-tools apphosting:secrets:set openrouter-api-key --project edit-help
-  # - variable: OPENROUTER_API_KEY
-  #   secret: openrouter-api-key
-  #   availability: [RUNTIME]
+  # 값을 갈 때:  npx firebase-tools apphosting:secrets:set openrouter-api-key --project edit-help
+  # 백엔드를 새로 만들면 접근 권한도 다시:  … apphosting:secrets:grantaccess openrouter-api-key --backend <이름>
+  - variable: OPENROUTER_API_KEY
+    secret: openrouter-api-key
+    availability: [RUNTIME]
   - variable: OPENROUTER_MODEL
     value: anthropic/claude-sonnet-4.5
     availability: [RUNTIME]
