@@ -127,9 +127,9 @@ function NameStep({ email, onDone }: { email: string; onDone: (name: string) => 
 
         <button
           className="mt-6 cursor-pointer border-0 bg-transparent p-0 text-[13px] text-ink-3 underline-offset-4 hover:underline"
-          onClick={() => signOutEverywhere().then(() => (window.location.href = '/login'))}
+          onClick={() => signOutEverywhere().then(() => (window.location.href = '/'))}
         >
-          {email} — 다른 계정으로 들어가기
+          {email} — 이 계정이 아니라면 나가기
         </button>
       </div>
     </div>

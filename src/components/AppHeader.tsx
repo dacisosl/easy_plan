@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useMe } from '@/components/AuthGate'
-import { signOutEverywhere } from '@/lib/firebase/client'
+import { signInWithGoogle, signOutEverywhere } from '@/lib/firebase/client'
 import { usePlanStore, type ScreenId } from '@/store/usePlanStore'
 
 const DOING: Record<ScreenId, string> = {
@@ -23,6 +23,26 @@ const DOING: Record<ScreenId, string> = {
 export function AppHeader() {
   const { screen, go, currentPlanId, startNew } = usePlanStore()
   const me = useMe()
+  const [authBusy, setAuthBusy] = useState(false)
+
+  /*
+   * 인증은 여기서 바로 구글 창을 띄운다 — 로그인 페이지로 건너보내지 않는다.
+   * 첫 화면은 도구의 얼굴이지 로그인 관문이 아니고, 인증은 AI 문안을 쓸 사람만
+   * 필요할 때 누르는 버튼 하나면 된다.
+   */
+  const authenticate = async () => {
+    setAuthBusy(true)
+    try {
+      await signInWithGoogle()
+      // 이름을 정했는지는 AuthGate가 다시 판단한다 — 새로 읽는 게 가장 확실하다
+      window.location.reload()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      // 사용자가 창을 닫은 것은 오류가 아니다 — 조용히 되돌린다
+      if (!/popup-closed|cancelled/i.test(msg)) window.alert(msg || '인증에 실패했습니다')
+      setAuthBusy(false)
+    }
+  }
   /*
    * 학교 마크 — public/school-logo.png 를 넣으면 뜨고, 없으면 '평' 사각형으로.
    * onError만으로는 부족하다. 리액트가 붙기 전에 이미 실패해 있으면 그 이벤트를
@@ -160,7 +180,7 @@ export function AppHeader() {
           </button>
 
           {/*
-           * 로그인은 선택이다 — 여는 것은 AI 문안 하나.
+           * 인증은 선택이다 — 여는 것은 AI 문안 하나.
            * 로컬(설정 없음)에서는 아무것도 안 보인다. 없는 문을 그려 두면 눌러 보게 된다.
            */}
           {me?.authDisabled ? null : me?.email ? (
@@ -175,9 +195,14 @@ export function AppHeader() {
               {me.displayName ?? me.email}
             </button>
           ) : (
-            <a className="btn btn-sm btn-ghost whitespace-nowrap" href="/login" title="AI 문안용">
-              로그인
-            </a>
+            <button
+              className="btn btn-sm whitespace-nowrap"
+              onClick={authenticate}
+              disabled={authBusy}
+              title="구글 계정으로 인증하면 AI 문안을 쓸 수 있습니다"
+            >
+              {authBusy ? '인증 중…' : '해밀고 인증'}
+            </button>
           )}
         </div>
       </div>
