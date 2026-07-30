@@ -44,6 +44,19 @@ function adminEmails(): string[] {
     .filter(Boolean)
 }
 
+/** `ADMIN_UIDS` — 이메일 대신 UID로 적어도 된다. 콘솔에서 만든 계정은 UID가 눈앞에 있다 */
+function adminUids(): string[] {
+  return (process.env.ADMIN_UIDS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+/** 설정값 명단에 있는 사람인가 — 이메일이든 UID든 한쪽만 맞으면 관리자다 */
+function isListedAdmin(email: string, uid: string): boolean {
+  return adminEmails().includes(email.toLowerCase()) || adminUids().includes(uid)
+}
+
 /**
  * 서비스 계정 — Firebase 콘솔의 '새 비공개 키 생성'으로 받은 JSON을 한 줄로 넣는다.
  * 줄바꿈이 `\n` 문자열로 들어오는 일이 흔해서 되돌려 준다.
@@ -120,7 +133,7 @@ export async function userFromSession(cookie: string | undefined): Promise<AppUs
       { displayName?: string; approved?: boolean; admin?: boolean } | undefined
 
     // 설정값에 적힌 관리자는 승인 절차를 거치지 않는다 — 첫 관리자를 만들 길이 없어진다
-    const listed = adminEmails().includes(email.toLowerCase())
+    const listed = isListedAdmin(email, claims.uid)
 
     // 처음 온 사람은 자리를 만들어 둔다 — 관리자가 명단에서 볼 수 있어야 승인할 수 있다
     if (!snap.exists) {
@@ -182,12 +195,11 @@ function toIso(v: unknown): string | null {
  */
 export async function listUsers(): Promise<UserRow[]> {
   const snap = await getFirestore(adminApp()).collection('users').get()
-  const listed = adminEmails()
 
   const rows = snap.docs.map((d) => {
     const x = d.data() as Record<string, unknown>
     const email = typeof x.email === 'string' ? x.email : ''
-    const admin = listed.includes(email.toLowerCase()) || x.admin === true
+    const admin = isListedAdmin(email, d.id) || x.admin === true
     return {
       uid: d.id,
       email,

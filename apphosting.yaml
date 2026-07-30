@@ -47,8 +47,12 @@ env:
   # 관리자 명단 — 쉼표로 나열한다. 여기 적힌 사람은 승인 없이 바로 관리자이고,
   # 앱 안 '관리자 → 사용자 승인'에서 남을 승인해 줄 수 있다.
   # 데이터베이스에만 두면 첫 관리자를 만들 길이 없어서 설정값으로 둔다.
+  # 이메일이든 UID든 한쪽만 맞으면 된다 — hae@mil.com 은 콘솔에서 만든 관리 계정.
   - variable: ADMIN_EMAILS
-    value: dunaro.gogo@gmail.com
+    value: dunaro.gogo@gmail.com,hae@mil.com
+    availability: [RUNTIME]
+  - variable: ADMIN_UIDS
+    value: SVAts7AG1jRBa8anNPtYqcSgSFI2
     availability: [RUNTIME]
 
   # 서비스 계정 키는 여기 없다. 구글 서버 안에서는 컨테이너가 자기 신분증을 이미

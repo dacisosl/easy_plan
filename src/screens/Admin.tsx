@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react'
 import { Screen } from '@/components/ui'
 import { useMe } from '@/components/AuthGate'
+import { signInWithEmail, signInWithGoogle, signOutEverywhere } from '@/lib/firebase/client'
 import { usePlanStore } from '@/store/usePlanStore'
 import { scheduledHours, weeksOf } from '@/lib/derive'
 import type { AcademicCalendar, Week } from '@/types'
@@ -39,6 +40,15 @@ export function Admin() {
 
   // 승인 탭은 관리자에게만 보인다. 숨기는 것은 예의일 뿐이고, 실제 자물쇠는 서버에 있다
   const tabs = me?.admin ? [...TABS, USERS_TAB] : TABS
+
+  /*
+   * 관리자 화면 전체를 관리자 인증 뒤에 둔다. 여기서만 구글과 이메일 두 길을
+   * 다 보여 준다 — 교사용 '해밀고 인증'은 구글 하나다. 길이 둘이면 묻게 된다.
+   * 로컬(로그인 설정 없음)에서는 그냥 연다.
+   */
+  if (!me?.authDisabled && !me?.admin) {
+    return <AdminAuth loggedInAs={me?.email ?? null} onBack={() => go('home')} />
+  }
 
   const patchCalendar = (next: AcademicCalendar) =>
     patchSchool({
@@ -529,5 +539,133 @@ function UsersTab({ myUid }: { myUid: string }) {
         다시 불러오기
       </button>
     </div>
+  )
+}
+
+/* ── 관리자 인증 ──────────────────────────────── */
+
+/**
+ * 관리자만 여기서 인증한다 — 구글과 이메일 두 길이 다 열려 있다.
+ * 이메일 계정은 Firebase 콘솔(Authentication → Users)에서 만들어 둔 관리 계정이다.
+ * 앱에 가입 화면은 없다 — 아무나 계정을 만들 수 있으면 명단이 소음으로 채워진다.
+ */
+function AdminAuth({ loggedInAs, onBack }: { loggedInAs: string | null; onBack: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState<'google' | 'email' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async (kind: 'google' | 'email', job: () => Promise<void>) => {
+    setError(null)
+    setBusy(kind)
+    try {
+      await job()
+      // 관리자인지는 서버가 다시 판단한다 — 새로 읽는 게 가장 확실하다
+      window.location.reload()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '인증에 실패했습니다'
+      // 사용자가 창을 닫은 것은 오류가 아니다 — 조용히 되돌린다
+      setError(/popup-closed|cancelled/i.test(msg) ? null : msg)
+      setBusy(null)
+    }
+  }
+
+  const emailReady = email.includes('@') && password.length >= 6
+
+  return (
+    <Screen title="관리자" subtitle="관리자 계정으로 인증해야 들어올 수 있습니다">
+      <div className="mx-auto flex w-full max-w-[380px] flex-col gap-5 py-6">
+        {loggedInAs && (
+          <p className="rounded-control border border-amber-line bg-amber-bg px-3.5 py-2.5 text-[13px] leading-relaxed text-amber-ink">
+            지금 계정({loggedInAs})은 관리자가 아닙니다.
+            <br />
+            관리자 계정으로 다시 인증해 주세요.
+          </p>
+        )}
+        {error && (
+          <p className="rounded-control border border-red-line bg-red-bg px-3.5 py-2.5 text-[13px] leading-relaxed text-red-ink">
+            {error}
+          </p>
+        )}
+
+        <button
+          className="btn btn-ghost flex w-full items-center justify-center gap-3"
+          disabled={busy !== null}
+          onClick={() =>
+            run('google', async () => {
+              // 이미 다른 계정이 붙어 있으면 떼고 시작한다 — 반쯤 겹친 상태를 만들지 않는다
+              if (loggedInAs) await signOutEverywhere()
+              await signInWithGoogle()
+            })
+          }
+        >
+          {/* 구글 브랜드 마크 — 네 색을 그대로 써야 알아본다 */}
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+            <path
+              fill="#4285F4"
+              d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z"
+            />
+            <path
+              fill="#34A853"
+              d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.34A9 9 0 0 0 9 18z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.96H.96a9 9 0 0 0 0 8.08l3.01-2.32z"
+            />
+            <path
+              fill="#EA4335"
+              d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3.01 2.32C4.68 5.16 6.66 3.58 9 3.58z"
+            />
+          </svg>
+          {busy === 'google' ? '인증 중…' : '구글로 인증'}
+        </button>
+
+        <div className="flex items-center gap-3 text-[12px] text-ink-4">
+          <span className="h-px flex-1 bg-line-soft" />
+          또는 관리 계정으로
+          <span className="h-px flex-1 bg-line-soft" />
+        </div>
+
+        <form
+          className="flex flex-col gap-2.5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (emailReady && busy === null)
+              run('email', async () => {
+                if (loggedInAs) await signOutEverywhere()
+                await signInWithEmail(email, password)
+              })
+          }}
+        >
+          <input
+            className="control"
+            type="email"
+            placeholder="이메일"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <input
+            className="control"
+            type="password"
+            placeholder="비밀번호"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <button className="btn w-full" type="submit" disabled={!emailReady || busy !== null}>
+            {busy === 'email' ? '인증 중…' : '로그인'}
+          </button>
+        </form>
+
+        <button
+          className="cursor-pointer self-center border-0 bg-transparent p-0 text-[13px] text-ink-3 underline-offset-4 hover:underline"
+          onClick={onBack}
+        >
+          작성으로 돌아가기
+        </button>
+      </div>
+    </Screen>
   )
 }

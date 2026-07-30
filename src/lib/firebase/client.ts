@@ -9,7 +9,14 @@
  */
 
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app'
-import { GoogleAuthProvider, getAuth, signInWithPopup, type Auth } from 'firebase/auth'
+import {
+  GoogleAuthProvider,
+  getAuth,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  type Auth,
+  type User,
+} from 'firebase/auth'
 
 const config = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -29,19 +36,13 @@ export function clientAuth(): Auth {
 }
 
 /**
- * 구글 로그인 창을 띄우고, 받은 ID 토큰을 서버에 넘겨 쿠키로 바꾼다.
+ * 받은 ID 토큰을 서버에 넘겨 쿠키로 바꾼다 — 어느 방식으로 들어왔든 마지막은 같다.
  *
  * 왜 쿠키까지 만드는가: 토큰을 브라우저에만 두면 서버가 매 요청마다 사람을 알 수 없다.
  * httpOnly 쿠키로 바꿔 두면 서버의 어느 API든 같은 문으로 판단할 수 있다.
  */
-export async function signInWithGoogle(): Promise<void> {
-  const provider = new GoogleAuthProvider()
-  // 계정을 여러 개 쓰는 교사가 많다 — 늘 어느 계정으로 들어갈지 고르게 한다
-  provider.setCustomParameters({ prompt: 'select_account' })
-
-  const cred = await signInWithPopup(clientAuth(), provider)
-  const idToken = await cred.user.getIdToken()
-
+async function establishSession(user: User): Promise<void> {
+  const idToken = await user.getIdToken()
   const res = await fetch('/api/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -52,6 +53,37 @@ export async function signInWithGoogle(): Promise<void> {
     // 쿠키를 못 만들었으면 브라우저 쪽 로그인도 되돌린다 — 반쯤 들어온 상태를 남기지 않는다
     await clientAuth().signOut()
     throw new Error(body.error ?? '로그인에 실패했습니다')
+  }
+}
+
+/** 구글 로그인 창을 띄운다 — 교사용, 헤더의 '해밀고 인증' */
+export async function signInWithGoogle(): Promise<void> {
+  const provider = new GoogleAuthProvider()
+  // 계정을 여러 개 쓰는 교사가 많다 — 늘 어느 계정으로 들어갈지 고르게 한다
+  provider.setCustomParameters({ prompt: 'select_account' })
+  const cred = await signInWithPopup(clientAuth(), provider)
+  await establishSession(cred.user)
+}
+
+/**
+ * 이메일·비밀번호 로그인 — **관리자 화면에서만** 쓴다.
+ *
+ * 교사에게는 구글 하나만 보여 준다. 길이 둘이면 어느 쪽인지 묻게 된다.
+ * 이 길은 관리자가 Firebase 콘솔(Authentication → Users)에서 직접 만든 관리
+ * 계정을 위한 것이다 — 앱에 가입 화면은 없다.
+ */
+export async function signInWithEmail(email: string, password: string): Promise<void> {
+  try {
+    const cred = await signInWithEmailAndPassword(clientAuth(), email, password)
+    await establishSession(cred.user)
+  } catch (e) {
+    // Firebase 오류 코드는 사람이 읽을 문장이 아니다 — 필요한 만큼만 옮긴다
+    const code = (e as { code?: string }).code ?? ''
+    if (/invalid-credential|wrong-password|user-not-found|invalid-email/.test(code))
+      throw new Error('이메일 또는 비밀번호가 맞지 않습니다')
+    if (/too-many-requests/.test(code))
+      throw new Error('시도가 너무 잦습니다 — 잠시 뒤에 다시 해 주세요')
+    throw e
   }
 }
 
