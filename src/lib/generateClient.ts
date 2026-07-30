@@ -38,6 +38,7 @@ export async function generateDraft(
     input_hash: string
     model: string
     fallback: boolean
+    fallback_reason?: string
     sections: AiDraft['sections']
   }>('sections', plan, subject, school)
 
@@ -48,17 +49,18 @@ export async function generateDraft(
   }
 
   opts?.onProgress?.('weekly')
-  const w = await callStage<{ model: string; fallback: boolean; weekly: AiDraft['weekly'] }>(
-    'weekly',
-    plan,
-    subject,
-    school,
-  )
+  const w = await callStage<{
+    model: string
+    fallback: boolean
+    fallback_reason?: string
+    weekly: AiDraft['weekly']
+  }>('weekly', plan, subject, school)
 
   opts?.onProgress?.('perfs')
   const p = await callStage<{
     model: string
     fallback: boolean
+    fallback_reason?: string
     perfs: AiDraft['perfs']
     warnings: string[]
   }>('perfs', plan, subject, school)
@@ -68,6 +70,8 @@ export async function generateDraft(
     model: s.model,
     created_at: new Date().toISOString(),
     fallback: s.fallback || w.fallback || p.fallback,
+    // 첫 번째로 잡힌 이유 하나면 된다 — 대개 세 스테이지가 같은 이유로 넘어진다
+    fallback_reason: s.fallback_reason ?? w.fallback_reason ?? p.fallback_reason,
     input_hash: s.input_hash,
     sections: s.sections,
     weekly: w.weekly,

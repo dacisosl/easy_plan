@@ -13,6 +13,36 @@ import { RULE_COUNT, validate } from '@/lib/validate'
 import { weeksOf } from '@/lib/derive'
 import { generateDraft } from '@/lib/generateClient'
 
+/**
+ * 대체 문구를 쓴 이유를 사람 말로.
+ * 이유가 안 잡힌 경우(예: 예전에 저장된 초안)는 재생성을 권한다 — 원인 코드는
+ * 새 초안부터 실리기 때문이다.
+ */
+function fallbackReasonLabel(reason?: string): string {
+  switch (reason) {
+    case 'not-allowed':
+      return '이 계정은 아직 AI 문안 사용 승인이 없습니다 (관리자 → 사용자 승인)'
+    case 'no-key':
+      return '서버에 OpenRouter API 키가 없습니다'
+    case 'http-401':
+      return 'API 키가 올바르지 않습니다 (401)'
+    case 'http-402':
+      return 'OpenRouter 크레딧이 부족합니다 (402)'
+    case 'http-404':
+      return '설정된 모델 이름을 OpenRouter가 모릅니다 (404)'
+    case 'http-429':
+      return '호출이 너무 잦습니다 (429) — 잠시 뒤 다시 생성'
+    case 'network':
+      return '모델 서버에 연결하지 못했습니다'
+    case 'parse':
+      return '모델 응답을 읽지 못했습니다'
+    default:
+      return reason
+        ? `호출 실패 (${reason})`
+        : '예전에 만든 초안입니다 — 원인을 보려면 다시 생성하세요'
+  }
+}
+
 export function Download() {
   const { school, go, setAiDraft, focusOn, confirmPerfProgress } = usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))
@@ -162,7 +192,7 @@ export function Download() {
           <>
             <span className="text-sm text-ink-2">
               {ai.fallback
-                ? '대체 문구 사용 (OPENROUTER_API_KEY 없음 또는 호출 실패) — 문서의 빨간 글씨는 상투 문안입니다'
+                ? `대체 문구 사용 — ${fallbackReasonLabel(ai.fallback_reason)}. 문서의 빨간 글씨는 상투 문안입니다. '다시 생성'으로 재시도할 수 있습니다.`
                 : `${ai.model} · ${new Date(ai.created_at).toLocaleString('ko-KR')}`}
             </span>
             {ai.warnings.length > 0 && (

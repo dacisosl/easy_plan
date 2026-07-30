@@ -313,6 +313,11 @@ export interface AiDraft {
   created_at: string
   /** 키가 없거나 실패해 결정적 대체 문구를 쓴 경우 */
   fallback: boolean
+  /**
+   * 대체 문구를 쓴 이유 — 화면이 사람 말로 옮겨 보여 준다.
+   * 'not-allowed'(승인 없음) · 'no-key' · 'http-401' 같은 코드.
+   */
+  fallback_reason?: string
   /** 입력 지문 — 일치하면 재호출을 건너뛴다 */
   input_hash: string
   /**

@@ -40,21 +40,29 @@ interface Body {
   school: SchoolLayer
 }
 
+type ModelResult = { json: unknown; model: string } | { reason: string }
+
+/**
+ * 모델을 부른다. 실패하면 **왜** 실패했는지를 돌려준다.
+ *
+ * 전에는 모든 실패가 null 하나로 뭉개졌다 — 승인이 없는 건지, 키가 빠진 건지,
+ * 크레딧이 마른 건지 화면에서는 전부 같은 문구였다. 원인을 모르면 못 고친다.
+ */
 async function callModel(
   prompt: { system: string; user: string },
   allowed: boolean,
-): Promise<{ json: unknown; model: string } | null> {
+): Promise<ModelResult> {
   // 승인받지 않은 사람은 모델을 부르지 않는다 — 대체 문구로 완결된다
-  if (!allowed) return null
+  if (!allowed) return { reason: 'not-allowed' }
   const key = process.env.OPENROUTER_API_KEY
-  if (!key) return null
+  if (!key) return { reason: 'no-key' }
   const model = process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL
 
   try {
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${key}`,
+        Authorization: `Bearer ${key.trim()}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': process.env.OPENROUTER_SITE_URL ?? 'http://localhost:3000',
         'X-Title': '교수학습 및 평가 운영계획서',
@@ -68,14 +76,16 @@ async function callModel(
         temperature: 0.3,
       }),
     })
-    if (!res.ok) return null
+    if (!res.ok) return { reason: `http-${res.status}` }
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
     const text = data.choices?.[0]?.message?.content ?? ''
     return { json: extractJson(text), model }
   } catch {
-    return null
+    return { reason: 'network' }
   }
 }
+
+const ok = (r: ModelResult): r is { json: unknown; model: string } => !('reason' in r)
 
 /**
  * 이 사람이 모델을 부를 수 있는가.
@@ -114,11 +124,12 @@ export async function POST(req: Request) {
   if (stage === 'sections') {
     const fb = fallbackSections(plan, subject, school)
     const res = await callModel(sectionsPrompt(plan, subject), allowed)
-    const parsed = parseSections(res?.json, fb)
+    const parsed = parseSections(ok(res) ? res.json : undefined, fb)
     return NextResponse.json({
       input_hash: hash,
-      model: res ? res.model : 'fallback',
-      fallback: !res || parsed.usedFallback,
+      model: ok(res) ? res.model : 'fallback',
+      fallback: !ok(res) || parsed.usedFallback,
+      fallback_reason: ok(res) ? (parsed.usedFallback ? 'parse' : undefined) : res.reason,
       sections: parsed.value,
     })
   }
@@ -126,18 +137,22 @@ export async function POST(req: Request) {
   if (stage === 'weekly') {
     const fb = fallbackWeekly(plan, subject, school)
     const res = await callModel(weeklyPrompt(plan, subject, school), allowed)
-    const parsed = parseWeekly(res?.json, fb)
+    const parsed = parseWeekly(ok(res) ? res.json : undefined, fb)
     return NextResponse.json({
       input_hash: hash,
-      model: res ? res.model : 'fallback',
-      fallback: !res || parsed.usedFallback,
+      model: ok(res) ? res.model : 'fallback',
+      fallback: !ok(res) || parsed.usedFallback,
+      fallback_reason: ok(res) ? (parsed.usedFallback ? 'parse' : undefined) : res.reason,
       weekly: parsed.value,
     })
   }
 
   // perfs — 문안 생성 + 내부 자체 점검(aiReview)을 warnings로
-  const res = plan.performances.length > 0 ? await callModel(perfsPrompt(plan, subject), allowed) : null
-  const parsed = res
+  const res =
+    plan.performances.length > 0
+      ? await callModel(perfsPrompt(plan, subject), allowed)
+      : ({ reason: 'no-perfs' } as ModelResult)
+  const parsed = ok(res)
     ? parsePerfs(res.json, plan)
     : {
         value: Object.fromEntries(plan.performances.map((p) => [p.id, fallbackPerf(p)])),
@@ -158,8 +173,9 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     input_hash: hash,
-    model: res ? res.model : 'fallback',
-    fallback: !res || parsed.usedFallback,
+    model: ok(res) ? res.model : 'fallback',
+    fallback: !ok(res) || parsed.usedFallback,
+    fallback_reason: ok(res) ? (parsed.usedFallback ? 'parse' : undefined) : res.reason,
     perfs: parsed.value,
     warnings,
   })
