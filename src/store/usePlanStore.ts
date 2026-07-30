@@ -101,7 +101,13 @@ export const usePlanStore = create<State & Actions>()(
     (set, get) => ({
       school: SCHOOL_SEED,
       subjects: [SUBJECT_SEED],
-      plans: [PLAN_SEED],
+      /*
+       * 처음은 빈 손이다. 견본 계획서를 넣어 두면 새로 온 모든 사람이
+       * '누가 작성하다 만 화면'을 보게 되고, 그게 서로 공유되는 것처럼 보인다 —
+       * 실제로는 각자 브라우저에 복사된 같은 견본일 뿐인데도.
+       * (PLAN_SEED는 새 계획서의 기본값 틀로만 쓴다)
+       */
+      plans: [],
       currentPlanId: null,
       screen: 'home',
       focusTarget: null,
