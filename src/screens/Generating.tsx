@@ -75,36 +75,38 @@ export function Generating() {
 
   return (
     <div className="mx-auto flex w-full max-w-[640px] flex-col gap-8 pt-16">
-      <h1 className="text-xl font-semibold">
-        {subject.name} · 계획서 만드는 중
-      </h1>
+      <h1 className="text-xl font-semibold">{subject.name} · 계획서 만드는 중</h1>
 
       <div className="flex flex-col gap-5">
         {STAGE_LABELS.map((s, i) => {
           const done = i < activeIdx
           const active = i === activeIdx
           return (
-            <div key={s.key} className="flex items-baseline gap-4">
-              <span
-                className={`w-4 text-sm ${done ? 'text-navy' : active ? 'text-navy' : 'text-ink-5'}`}
-                aria-hidden
-              >
-                {done ? '✓' : active ? '•' : '○'}
-              </span>
-              <span
-                className={
-                  active
-                    ? 'text-[17px] font-semibold text-navy'
-                    : done
-                      ? 'text-[15px] text-ink-3'
-                      : 'text-[15px] text-ink-5'
-                }
-              >
-                {s.label}
-              </span>
-              <span className={`text-[13px] ${active ? 'text-navy-mid' : 'text-ink-4'}`}>
-                {s.detail}
-              </span>
+            <div key={s.key} className="flex flex-col gap-2.5">
+              <div className="flex items-baseline gap-4">
+                <span
+                  className={`w-4 text-sm ${done ? 'text-navy' : active ? 'text-navy' : 'text-ink-5'}`}
+                  aria-hidden
+                >
+                  {done ? '✓' : active ? '•' : '○'}
+                </span>
+                <span
+                  className={
+                    active
+                      ? 'text-[17px] font-semibold text-navy'
+                      : done
+                        ? 'text-[15px] text-ink-3'
+                        : 'text-[15px] text-ink-5'
+                  }
+                >
+                  {s.label}
+                </span>
+                <span className={`text-[13px] ${active ? 'text-navy-mid' : 'text-ink-4'}`}>
+                  {s.detail}
+                </span>
+              </div>
+              {/* 지금 도는 항목에만 흐르는 바 — 멈춘 게 아니라는 걸 눈이 알게 한다 */}
+              {active && <span className="loading-bar ml-8" />}
             </div>
           )
         })}
@@ -121,7 +123,7 @@ export function Generating() {
         </div>
       ) : (
         <p className="text-sm text-ink-3">
-          키가 없으면 결정적 대체 문구로 완결됩니다 — 어느 쪽이든 문서는 나옵니다
+          문안은 자동으로 완성됩니다 — 끝나면 바로 내려받기 화면으로 넘어갑니다
         </p>
       )}
     </div>
