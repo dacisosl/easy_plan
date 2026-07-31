@@ -28,39 +28,71 @@ interface RefFile {
   size: number
 }
 
-/** 서랍의 카드 한 장 — 안으로 들어가거나(onOpen), 밖으로 나가거나(href) */
+/**
+ * 서랍의 카드 한 장 — 세로로 긴 판형.
+ *
+ * 위에서 아래로: 아이콘(무엇인지 한눈에) → 제목 → 설명 → 행동 문구(무슨 일이
+ * 일어나는지). 행동 문구를 바닥에 붙여 세 카드의 눈높이를 맞추고, 올리면 살짝
+ * 떠오르게 해 '눌린다'는 것을 손보다 먼저 눈이 알게 한다.
+ */
 function Card({
+  icon,
   title,
   desc,
+  action,
   onOpen,
   href,
 }: {
+  icon: React.ReactNode
   title: string
   desc: string
-  /** 둘 다 없으면 아직 열 수 없는 카드 — '준비 중' 표시가 붙는다 */
+  /** 바닥의 행동 문구 — '읽어보기' '내려받기' 처럼 눌렀을 때의 일 */
+  action: string
+  /** onOpen도 href도 없으면 아직 열 수 없는 카드 — '준비 중' 표시가 붙는다 */
   onOpen?: () => void
   href?: string
 }) {
   const live = Boolean(onOpen || href)
-  const cls = `flex flex-col gap-1.5 rounded-box border px-3.5 py-4 text-left sm:px-5 sm:py-5 ${
+  const cls = `group flex min-h-[220px] flex-col rounded-card border p-4 text-left sm:min-h-[260px] sm:p-6 ${
     live
-      ? 'cursor-pointer border-line-card bg-surface-sub hover:border-navy-line-hover'
+      ? 'cursor-pointer border-line-card bg-surface transition-all duration-200 hover:-translate-y-1 hover:border-navy-mid hover:shadow-lg hover:shadow-navy/10'
       : 'cursor-default border-line-soft bg-surface-off'
   }`
 
   const inner = (
     <>
-      <span className="flex items-center gap-2 text-[16px] font-semibold text-ink">
+      {/* 아이콘 — 연한 파랑 판 위에. 올리면 판이 진해져 카드가 살아 있음을 한 번 더 말한다 */}
+      <span
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] transition-colors sm:h-13 sm:w-13 ${
+          live
+            ? 'bg-navy-bg text-navy group-hover:bg-navy group-hover:text-white'
+            : 'bg-surface-sub text-ink-4'
+        }`}
+      >
+        {icon}
+      </span>
+
+      <span className="mt-3.5 flex flex-wrap items-center gap-2 text-[15px] font-semibold text-ink sm:mt-4 sm:text-[17px]">
         {title}
         {!live && (
-          <span className="rounded-chip border border-line-input bg-surface px-2 py-0.5 text-[11.5px] font-normal text-ink-3">
+          <span className="rounded-chip border border-line-input bg-surface px-2 py-0.5 text-[11px] font-normal text-ink-3">
             준비 중
           </span>
         )}
-        {/* 밖으로 나가는 길은 화살표를 비스듬히 — 앱을 떠난다는 표시 */}
-        {live && <span className="ml-auto text-ink-3">{href ? '↗' : '→'}</span>}
       </span>
-      <span className="text-[13.5px] leading-relaxed text-ink-2">{desc}</span>
+      <span className="mt-1.5 flex-1 text-[12.5px] leading-relaxed break-keep text-ink-2 sm:text-[13.5px]">
+        {desc}
+      </span>
+
+      {/* 행동 문구 — 바닥 고정. 밖으로 나가는 길은 화살표를 비스듬히(↗) */}
+      {live && (
+        <span className="mt-4 flex items-center gap-1 text-[13px] font-semibold text-navy">
+          {action}
+          <span className="transition-transform duration-200 group-hover:translate-x-0.5">
+            {href ? '↗' : '→'}
+          </span>
+        </span>
+      )}
     </>
   )
 
@@ -75,6 +107,52 @@ function Card({
     <button className={cls} onClick={onOpen} disabled={!onOpen}>
       {inner}
     </button>
+  )
+}
+
+/* 선 굵기·모서리를 헤더의 로봇 아이콘과 맞춘 카드 아이콘들 */
+
+const ICON = {
+  width: 26,
+  height: 26,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.7,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const
+
+/** 펼친 책 — 사용안내 */
+function BookIcon() {
+  return (
+    <svg {...ICON} aria-hidden>
+      <path d="M2.5 5h6.2A2.8 2.8 0 0 1 11.5 7.8V20a2.4 2.4 0 0 0-2.4-2.3H2.5z" />
+      <path d="M21.5 5h-6.2a2.8 2.8 0 0 0-2.8 2.8V20a2.4 2.4 0 0 1 2.4-2.3h6.6z" />
+    </svg>
+  )
+}
+
+/** 내려받는 서류철 — 작년자료 */
+function FolderDownIcon() {
+  return (
+    <svg {...ICON} aria-hidden>
+      <path d="M3 7.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M12 10.5v5M9.6 13.4 12 15.8l2.4-2.4" />
+    </svg>
+  )
+}
+
+/** 학교 건물 — 학교알리미 */
+function SchoolIcon() {
+  return (
+    <svg {...ICON} aria-hidden>
+      <path d="M3 21h18" />
+      <path d="M5 21V9.6L12 5l7 4.6V21" />
+      <path d="M12 5V3h3" />
+      <path d="M10 21v-4.5h4V21" />
+      <path d="M8.2 12.5h.01M12 12.5h.01M15.8 12.5h.01" />
+    </svg>
   )
 }
 
@@ -144,23 +222,33 @@ export function Extras() {
         }
       >
         {/* 늘 가로 3분할 — 세 장이 한 줄에 나란히 보여야 서랍 전체가 한눈에 잡힌다 */}
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-5">
           <Card
+            icon={<BookIcon />}
             title="사용안내"
             desc="무엇을 넣으면 무엇이 되는지 — 역할 분담부터 주의사항까지 한 장으로."
+            action="읽어보기"
             onOpen={() => setView('guide')}
           />
           {/* 파일이 하나도 없으면 열어 봐야 빈 화면이다 — 그때는 '준비 중'으로 둔다 */}
           <Card
+            icon={<FolderDownIcon />}
             title="작년자료"
             desc={
               refs && refs.length > 0
-                ? `작년 평가계획서 ${refs.length}개 — 눌러서 내려받으세요.`
+                ? `작년 학년별 평가계획서 실물 ${refs.length}개 — 기획할 때 곁에 두는 사례집.`
                 : '작년 과목별 평가계획서 모음 — 참고할 실물 사례.'
             }
+            action="내려받기"
             onOpen={refs && refs.length > 0 ? () => setView('refs') : undefined}
           />
-          <Card title="학교알리미" desc="다른 학교 평가계획 참고하기" href={SCHOOLINFO_URL} />
+          <Card
+            icon={<SchoolIcon />}
+            title="학교알리미"
+            desc="다른 학교는 어떻게 짰을까 — 전국 학교의 공시된 평가계획을 찾아봅니다."
+            action="다른 학교 평가계획 참고하기"
+            href={SCHOOLINFO_URL}
+          />
         </div>
       </Screen>
     )
