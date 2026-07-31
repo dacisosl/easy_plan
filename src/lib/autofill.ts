@@ -248,10 +248,14 @@ function pickWeek(
   const lead = school.rules.notice_lead_weeks
   const weeks = weeksOf(school, plan.semester)
   const sorted = [...plan.exams].sort((a, b) => a.week - b.week)
-  const lastExam = sorted[sorted.length - 1]
   const twoExams = plan.exam_count === 2 && sorted.length >= 2
   const lower = twoExams ? Math.max(lead + 1, sorted[0].week - 2) : lead + 1
-  const limit = twoExams ? sorted[1].week - 1 : lastExam ? lastExam.week : weeks.length
+  /*
+   * 상한은 규칙 11과 같은 기준 — 계획서의 시험이 아니라 **학사일정의 마지막
+   * 시험 주**(2회 고사 기간). 1회만 응시하는 과목도 그 기간 전까지는 실시할 수 있다.
+   */
+  const calLastExam = [...weeks].filter((w) => w.is_exam).sort((a, b) => b.no - a.no)[0]?.no
+  const limit = twoExams ? sorted[1].week - 1 : (calLastExam ?? weeks.length)
   const teaching = new Set(teachingWeeks(weeks).map((w) => w.no))
 
   const usable = (n: number) =>

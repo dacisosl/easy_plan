@@ -209,13 +209,19 @@ export function validate(
     })
   }
 
-  /* 11. 수행평가가 2회 정기시험 이전에 완료 */
-  const lastExam = [...plan.exams].sort((a, b) => b.week - a.week)[0]
-  if (lastExam) {
-    const late = plan.performances.filter((p) => p.week > lastExam.week)
+  /*
+   * 11. 수행평가가 마지막 정기시험 **기간** 이전에 완료.
+   *
+   * 기준은 계획서의 시험이 아니라 **학사일정의 마지막 시험 주**(2회 고사 기간)다.
+   * 1회만 응시하는 과목이라도 수행평가는 2회 고사 기간 전까지 실시할 수 있다 —
+   * 예전엔 그 과목의 시험(4월) 뒤 수행평가가 전부 걸리는 오탐이 있었다.
+   */
+  const lastExamWeek = [...weeks].filter((w) => w.is_exam).sort((a, b) => b.no - a.no)[0]?.no
+  if (lastExamWeek) {
+    const late = plan.performances.filter((p) => p.week > lastExamWeek)
     if (late.length > 0) {
       fail(11, {
-        title: `${lastExam.no}회 정기시험 뒤에 실시하는 수행평가가 있습니다`,
+        title: `마지막 정기시험 기간(${lastExamWeek}주) 뒤에 실시하는 수행평가가 있습니다`,
         detail: late.map((p) => `${p.name || '(이름 없음)'} ${p.week}주`).join(' · '),
         target: 'perf',
       })

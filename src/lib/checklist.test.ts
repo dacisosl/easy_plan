@@ -181,6 +181,23 @@ describe('검증 규칙 16~19 · 2·3 수정', () => {
     expect(rulesOf(PLAN_SEED)).not.toContain(18)
   })
 
+  it('11 — 기준은 학사일정의 마지막 시험 기간이다 (1회 응시 과목 오탐 방지)', () => {
+    // 1회만 응시(시험 8주)해도 수행평가는 2회 고사 기간(18주) 전까지 실시할 수 있다
+    const oneExam = planWith({
+      exam_count: 1,
+      exams: [PLAN_SEED.exams[0]],
+      performances: [perf({ week: 12 }), { ...PLAN_SEED.performances[1], week: 15 }],
+    })
+    expect(rulesOf(oneExam)).not.toContain(11)
+    // 2회 고사 기간(18주)을 넘기면 잡는다
+    const tooLate = planWith({
+      exam_count: 1,
+      exams: [PLAN_SEED.exams[0]],
+      performances: [perf({ week: 19 }), PLAN_SEED.performances[1]],
+    })
+    expect(rulesOf(tooLate)).toContain(11)
+  })
+
   it('19 — 실시 창: 1회 시험 2주 전 ~ 2회 시험 전 (2회 실시 과목만)', () => {
     // 시험주 8·18 → 허용 창 [6, 17]
     const early = planWith({ performances: [perf({ week: 5 }), PLAN_SEED.performances[1]] })
