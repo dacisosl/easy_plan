@@ -849,6 +849,19 @@ export class HwpxDoc {
   /* ── 저장 (①) ────────────────────────────── */
 
   async save(): Promise<Uint8Array> {
+    /*
+     * ★ 문단 레이아웃 캐시(linesegarray)를 전부 걷어낸다.
+     *
+     * 한글은 문단마다 줄 배치 캐시를 저장해 두고, 열 때 본문과 대조한다.
+     * 우리가 글자를 바꾼 문단의 캐시가 남아 있으면 "문서가 손상되었거나
+     * 변조되었을 가능성" 경고가 뜬다 (한컴 개발자 포럼 확인). setPara류는
+     * 지우지만 fillRed처럼 run만 갈아끼우는 경로가 캐시를 남겼다.
+     * 캐시는 선택 요소라 전부 지워도 된다 — 한글이 열 때 다시 계산한다.
+     */
+    for (const lsa of descendants(this.doc.documentElement as unknown as El, 'linesegarray')) {
+      lsa.parentNode?.removeChild(lsa)
+    }
+
     // xmldom은 원본에 선언이 있으면 직렬화 결과에 그대로 담아 준다. 없을 때만 붙인다.
     const write = (name: string, document: Document) => {
       const serialized = new XMLSerializer().serializeToString(document as never)

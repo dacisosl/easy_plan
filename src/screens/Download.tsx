@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react'
-import { ColorKey, ConfirmDialog, PlanSubtitle, Screen } from '@/components/ui'
+import { ColorKey, PlanSubtitle, Portal, Screen } from '@/components/ui'
 import { usePlanStore } from '@/store/usePlanStore'
 import { RULE_COUNT, validate } from '@/lib/validate'
 import { weeksOf } from '@/lib/derive'
@@ -193,16 +193,7 @@ export function Download() {
           </button>
 
           {confirmOpen && (
-            <ConfirmDialog
-              title="내려받기 전에"
-              detail={
-                <span className="flex flex-col gap-1.5 pt-0.5 leading-relaxed">
-                  <span>1. AI로 생성한 초안(빨간 글씨)은 반드시 검토해 주세요.</span>
-                  <span>2. 수행평가 루브릭은 한글에서 직접 편집·작성해야 합니다.</span>
-                </span>
-              }
-              confirmLabel="확인했어요 · 내려받기"
-              tone="primary"
+            <DownloadNotice
               onConfirm={() => {
                 setConfirmOpen(false)
                 void download()
@@ -227,5 +218,60 @@ export function Download() {
         )}
       </div>
     </Screen>
+  )
+}
+
+/**
+ * 내려받기 전 안내 — 일부러 크게 만든 모달.
+ *
+ * 문서가 자동으로 나오니 다 끝난 줄 알기 쉽다. 어디까지가 도구 몫이고
+ * 어디부터가 사람 몫인지, 내려받는 순간에 못 지나치게 큼직하게 말한다.
+ */
+function DownloadNotice({ onConfirm, onClose }: { onConfirm: () => void; onClose: () => void }) {
+  return (
+    <Portal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,28,36,0.45)] p-4 sm:p-6"
+        onClick={onClose}
+      >
+        <div
+          className="flex w-full max-w-[540px] flex-col gap-6 rounded-card bg-surface p-7 sm:p-9"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="text-[21px] font-semibold tracking-[-0.01em] text-ink sm:text-[23px]">
+            내려받기 전에 꼭 확인하세요
+          </span>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-3.5">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-navy text-[14px] font-bold text-white">
+                1
+              </span>
+              <p className="text-[16px] leading-relaxed break-keep text-ink sm:text-[17px]">
+                AI로 생성한 초안(<b className="text-red">빨간 글씨</b>)은{' '}
+                <b>반드시 검토해 주세요.</b>
+              </p>
+            </div>
+            <div className="flex items-start gap-3.5">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-navy text-[14px] font-bold text-white">
+                2
+              </span>
+              <p className="text-[16px] leading-relaxed break-keep text-ink sm:text-[17px]">
+                수행평가 <b>루브릭</b>은 한글에서 <b>직접 편집·작성</b>해야 합니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-1 flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:justify-end sm:gap-3">
+            <button className="btn btn-ghost" onClick={onClose}>
+              취소
+            </button>
+            <button className="btn btn-lg px-9" autoFocus onClick={onConfirm}>
+              확인했어요 · 내려받기
+            </button>
+          </div>
+        </div>
+      </div>
+    </Portal>
   )
 }
