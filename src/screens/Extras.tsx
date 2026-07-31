@@ -31,7 +31,7 @@ function Card({
 }) {
   return (
     <button
-      className={`flex flex-col gap-1.5 rounded-box border px-5 py-5 text-left ${
+      className={`flex flex-col gap-1.5 rounded-box border px-3.5 py-4 text-left sm:px-5 sm:py-5 ${
         onOpen
           ? 'cursor-pointer border-line-card bg-surface-sub hover:border-navy-line-hover'
           : 'cursor-default border-line-soft bg-surface-off'
@@ -93,7 +93,8 @@ export function Extras() {
           </button>
         }
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* 늘 가로 3분할 — 세 장이 한 줄에 나란히 보여야 서랍 전체가 한눈에 잡힌다 */}
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
           <Card
             title="사용안내"
             desc="무엇을 넣으면 무엇이 되는지 — 역할 분담부터 주의사항까지 한 장으로."
