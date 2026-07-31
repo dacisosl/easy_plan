@@ -42,3 +42,8 @@ samples/
 /out/
 /public/form_2026.hwpx
 /.firebase/
+
+# 참고자료 실물 파일 — 교사 실명·학교명이 들어 있고 이 저장소는 공개다.
+# 배포는 로컬 빌드에서 나가므로 앱에는 정상적으로 실린다. (README는 남긴다)
+/public/refs/*
+!/public/refs/README.md

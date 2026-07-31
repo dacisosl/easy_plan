@@ -3,9 +3,9 @@
 /**
  * 참고자료 — 카드 세 장으로 들어가는 서랍.
  *
- *   사용안내   이 앱을 어떻게 쓰는가 (완성)
- *   작년자료   작년 평가계획서 모음 (준비 중)
- *   학교알리미 공시 자료 (준비 중)
+ *   사용안내   이 앱을 어떻게 쓰는가
+ *   작년자료   public/refs/ 에 둔 파일을 내려받는다 (빌드가 목록을 굽는다)
+ *   학교알리미 다른 학교 평가계획을 보러 나간다 (바깥 링크)
  *
  * 사용안내는 교사가 읽는 글이다. 개발 용어 없이 세 가지만 답한다:
  *  ① 무엇을 넣고 무엇을 기획하면 되는가
@@ -14,43 +14,74 @@
  * 맨 앞의 '누가 무엇을 하나' 표가 전체 그림이다 — 사람들은 목차보다 역할 분담을 먼저 궁금해한다.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Screen } from '@/components/ui'
 import { usePlanStore } from '@/store/usePlanStore'
 
-/** 서랍의 카드 한 장 */
+/** 학교알리미 — 공시된 다른 학교 평가계획을 찾아보는 자리 */
+const SCHOOLINFO_URL = 'https://www.schoolinfo.go.kr/ei/ss/pneiss_a03_s0.do'
+
+interface RefFile {
+  name: string
+  href: string
+  file: string
+  size: number
+}
+
+/** 서랍의 카드 한 장 — 안으로 들어가거나(onOpen), 밖으로 나가거나(href) */
 function Card({
   title,
   desc,
   onOpen,
+  href,
 }: {
   title: string
   desc: string
-  /** 없으면 아직 열 수 없는 카드 — '준비 중' 표시가 붙는다 */
+  /** 둘 다 없으면 아직 열 수 없는 카드 — '준비 중' 표시가 붙는다 */
   onOpen?: () => void
+  href?: string
 }) {
-  return (
-    <button
-      className={`flex flex-col gap-1.5 rounded-box border px-3.5 py-4 text-left sm:px-5 sm:py-5 ${
-        onOpen
-          ? 'cursor-pointer border-line-card bg-surface-sub hover:border-navy-line-hover'
-          : 'cursor-default border-line-soft bg-surface-off'
-      }`}
-      onClick={onOpen}
-      disabled={!onOpen}
-    >
+  const live = Boolean(onOpen || href)
+  const cls = `flex flex-col gap-1.5 rounded-box border px-3.5 py-4 text-left sm:px-5 sm:py-5 ${
+    live
+      ? 'cursor-pointer border-line-card bg-surface-sub hover:border-navy-line-hover'
+      : 'cursor-default border-line-soft bg-surface-off'
+  }`
+
+  const inner = (
+    <>
       <span className="flex items-center gap-2 text-[16px] font-semibold text-ink">
         {title}
-        {!onOpen && (
+        {!live && (
           <span className="rounded-chip border border-line-input bg-surface px-2 py-0.5 text-[11.5px] font-normal text-ink-3">
             준비 중
           </span>
         )}
-        {onOpen && <span className="ml-auto text-ink-3">→</span>}
+        {/* 밖으로 나가는 길은 화살표를 비스듬히 — 앱을 떠난다는 표시 */}
+        {live && <span className="ml-auto text-ink-3">{href ? '↗' : '→'}</span>}
       </span>
       <span className="text-[13.5px] leading-relaxed text-ink-2">{desc}</span>
+    </>
+  )
+
+  if (href) {
+    return (
+      <a className={cls} href={href} target="_blank" rel="noopener noreferrer">
+        {inner}
+      </a>
+    )
+  }
+  return (
+    <button className={cls} onClick={onOpen} disabled={!onOpen}>
+      {inner}
     </button>
   )
+}
+
+/** 바이트를 사람이 읽는 크기로 */
+function sizeLabel(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
 /** 소제목 하나 — 번호와 제목을 붙이고 아래 내용을 받는다 */
@@ -77,7 +108,26 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 
 export function Extras() {
   const { go, startNew, currentPlanId } = usePlanStore()
-  const [view, setView] = useState<'menu' | 'guide'>('menu')
+  const [view, setView] = useState<'menu' | 'guide' | 'refs'>('menu')
+  /** null = 아직 목록을 못 읽음 (파일이 하나도 없으면 빈 배열) */
+  const [refs, setRefs] = useState<RefFile[] | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    fetch('/refs/index.json')
+      .then((r) => (r.ok ? r.json() : { files: [] }))
+      .catch(() => ({ files: [] }))
+      .then((j: { files?: RefFile[] }) => alive && setRefs(j.files ?? []))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const backToMenu = (
+    <button className="btn btn-sm btn-ghost" onClick={() => setView('menu')}>
+      ← 참고자료
+    </button>
+  )
 
   if (view === 'menu') {
     return (
@@ -100,9 +150,42 @@ export function Extras() {
             desc="무엇을 넣으면 무엇이 되는지 — 역할 분담부터 주의사항까지 한 장으로."
             onOpen={() => setView('guide')}
           />
-          <Card title="작년자료" desc="작년 과목별 평가계획서 모음 — 참고할 실물 사례." />
-          <Card title="학교알리미" desc="학교알리미 공시 자료로 바로 가는 길." />
+          {/* 파일이 하나도 없으면 열어 봐야 빈 화면이다 — 그때는 '준비 중'으로 둔다 */}
+          <Card
+            title="작년자료"
+            desc={
+              refs && refs.length > 0
+                ? `작년 평가계획서 ${refs.length}개 — 눌러서 내려받으세요.`
+                : '작년 과목별 평가계획서 모음 — 참고할 실물 사례.'
+            }
+            onOpen={refs && refs.length > 0 ? () => setView('refs') : undefined}
+          />
+          <Card title="학교알리미" desc="다른 학교 평가계획 참고하기" href={SCHOOLINFO_URL} />
         </div>
+      </Screen>
+    )
+  }
+
+  if (view === 'refs') {
+    return (
+      <Screen title="작년자료" subtitle="눌러서 내려받으세요" right={backToMenu}>
+        <div className="flex flex-col divide-y divide-line-soft rounded-box border border-line-card">
+          {(refs ?? []).map((f) => (
+            <a
+              key={f.href}
+              className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface-sub sm:px-5"
+              href={f.href}
+              download={f.file}
+            >
+              <span className="min-w-0 flex-1 truncate text-[14.5px] text-ink">{f.name}</span>
+              <span className="shrink-0 text-[12.5px] text-ink-3">{sizeLabel(f.size)}</span>
+              <span className="shrink-0 text-navy">↓</span>
+            </a>
+          ))}
+        </div>
+        <p className="hint">
+          작년 계획서는 그대로 쓰는 문서가 아니라 참고용입니다 — 올해 학사일정과 지침이 다릅니다.
+        </p>
       </Screen>
     )
   }
@@ -111,11 +194,7 @@ export function Extras() {
     <Screen
       title="사용 안내"
       subtitle="선생님은 계획만, 편집은 편집기가 — 무엇을 넣으면 무엇이 되는지"
-      right={
-        <button className="btn btn-sm btn-ghost" onClick={() => setView('menu')}>
-          ← 참고자료
-        </button>
-      }
+      right={backToMenu}
     >
       {/* ── 한눈에: 역할 분담 ── */}
       <div className="rounded-box border border-navy-line bg-navy-bg px-5 py-5 sm:px-7">

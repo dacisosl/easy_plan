@@ -12,8 +12,8 @@
     "verify:hwpx": "tsx scripts/verify-hwpx.ts",
     "render:test": "tsx scripts/test-render.ts",
     "seed:subject": "tsx scripts/seed-subject.ts",
-    "prebuild": "tsx scripts/build-subjects.ts",
-    "predev": "tsx scripts/build-subjects.ts",
+    "prebuild": "tsx scripts/build-subjects.ts && tsx scripts/build-refs.ts",
+    "predev": "tsx scripts/build-subjects.ts && tsx scripts/build-refs.ts",
     "deploy": "npm run build && firebase-tools deploy --only hosting --project edit-help"
   },
   "dependencies": {
