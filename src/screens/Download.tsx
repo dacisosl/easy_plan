@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react'
-import { ColorKey, PlanSubtitle, Screen } from '@/components/ui'
+import { ColorKey, ConfirmDialog, PlanSubtitle, Screen } from '@/components/ui'
 import { usePlanStore } from '@/store/usePlanStore'
 import { RULE_COUNT, validate } from '@/lib/validate'
 import { weeksOf } from '@/lib/derive'
@@ -22,6 +22,8 @@ export function Download() {
     return p ? s.subjects.find((x) => x.id === p.subject_id) : undefined
   })
   const [busy, setBusy] = useState(false)
+  /* 내려받기 전 마지막 안내 — 문서에서 사람 몫이 무엇인지 한 번은 말하고 보낸다 */
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const [regen, setRegen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
@@ -53,7 +55,9 @@ export function Download() {
       const { bytes, report } = await renderForm(template, plan, subject, school, ai)
       setWarnings(report.warnings)
 
-      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/hwp+zip' }))
+      const url = URL.createObjectURL(
+        new Blob([bytes as BlobPart], { type: 'application/hwp+zip' }),
+      )
       const a = document.createElement('a')
       a.href = url
       a.download = fileName
@@ -183,10 +187,29 @@ export function Download() {
           <button
             className="btn btn-xl"
             disabled={busy || result.errors.length > 0}
-            onClick={() => void download()}
+            onClick={() => (ai ? setConfirmOpen(true) : go('generating'))}
           >
             {busy ? '만드는 중…' : `${fileName} 내려받기`}
           </button>
+
+          {confirmOpen && (
+            <ConfirmDialog
+              title="내려받기 전에"
+              detail={
+                <span className="flex flex-col gap-1.5 pt-0.5 leading-relaxed">
+                  <span>1. AI로 생성한 초안(빨간 글씨)은 반드시 검토해 주세요.</span>
+                  <span>2. 수행평가 루브릭은 한글에서 직접 편집·작성해야 합니다.</span>
+                </span>
+              }
+              confirmLabel="확인했어요 · 내려받기"
+              tone="primary"
+              onConfirm={() => {
+                setConfirmOpen(false)
+                void download()
+              }}
+              onClose={() => setConfirmOpen(false)}
+            />
+          )}
         </div>
         <ColorKey />
         <span className="hint">

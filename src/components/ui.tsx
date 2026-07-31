@@ -276,12 +276,15 @@ export function ConfirmDialog({
   title,
   detail,
   confirmLabel = '삭제',
+  tone = 'danger',
   onConfirm,
   onClose,
 }: {
   title: ReactNode
   detail?: ReactNode
   confirmLabel?: string
+  /** danger = 지우기 같은 파괴적 확인(빨강) · primary = 진행 확인(네이비) */
+  tone?: 'danger' | 'primary'
   onConfirm: () => void
   onClose: () => void
 }) {
@@ -311,7 +314,11 @@ export function ConfirmDialog({
             <button className="btn btn-sm btn-ghost" onClick={onClose}>
               취소
             </button>
-            <button className="btn btn-sm btn-danger" autoFocus onClick={onConfirm}>
+            <button
+              className={`btn btn-sm ${tone === 'danger' ? 'btn-danger' : ''}`}
+              autoFocus
+              onClick={onConfirm}
+            >
               {confirmLabel}
             </button>
           </div>
