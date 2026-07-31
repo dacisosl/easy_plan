@@ -41,3 +41,4 @@ samples/
 # 정적 배포 산출물
 /out/
 /public/form_2026.hwpx
+/.firebase/
