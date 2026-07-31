@@ -5,25 +5,19 @@ import { dirname } from 'node:path'
 const root = dirname(fileURLToPath(import.meta.url))
 
 const config: NextConfig = {
+  /**
+   * 완전 정적 내보내기 — 서버가 없다.
+   *
+   * 한글(.hwpx) 조립도, 문안 초안도, 과목 데이터도 전부 브라우저에서 처리한다.
+   * 과목은 빌드 때 JSON으로 굽고(scripts/build-subjects.ts), 양식 파일은
+   * public에 둔다. 그래서 Firebase Hosting(정적 CDN)에 바로 올라가고
+   * 배포가 수십 초면 끝난다 — App Hosting(서버 컨테이너)을 쓸 이유가 없어졌다.
+   */
+  output: 'export',
   // 화면 구석의 Next.js 개발 표시기를 끈다 — 작업 화면을 가린다
   devIndicators: false,
-  // hwpx 렌더링은 서버에서만 돈다. 번들러가 노드 전용 모듈을 건드리지 않게 둔다.
-  serverExternalPackages: ['@xmldom/xmldom', 'jszip'],
   // 상위 폴더에 다른 lockfile이 있어도 이 폴더를 루트로 본다
   outputFileTracingRoot: root,
-  /**
-   * ★ 서버가 런타임에 디스크에서 읽는 파일들.
-   *
-   * 두 라우트가 `join(process.cwd(), …)`로 경로를 **런타임에 조립**한다.
-   * Next.js의 파일 추적은 정적 분석이라 이런 경로를 못 잡는다 —
-   * 명시하지 않으면 Vercel 같은 서버리스 환경에서 파일이 번들에 안 실려
-   * 두 API가 500으로 죽는다. 로컬에서는 파일이 옆에 있어서 티가 안 난다.
-   */
-  outputFileTracingIncludes: {
-    '/api/export': ['./templates/form_2026.hwpx'],
-    '/api/subjects': ['./data/**'],
-    '/api/subjects/[name]': ['./data/**'],
-  },
 }
 
 export default config

@@ -1,9 +1,10 @@
 'use client'
 
 /**
- * 내려받기 — 요약 + AI 초안 상태 + hwpx 다운로드.
+ * 내려받기 — 요약 + 문안 초안 상태 + hwpx 다운로드.
  *
- * AI 초안이 없거나 입력이 바뀌었으면 generating을 먼저 거친다.
+ * 초안이 없거나 입력이 바뀌었으면 generating을 먼저 거친다.
+ * 조립도 초안도 브라우저 안에서 끝난다 — 서버가 없다(정적 호스팅).
  */
 
 import { useState } from 'react'
@@ -12,36 +13,6 @@ import { usePlanStore } from '@/store/usePlanStore'
 import { RULE_COUNT, validate } from '@/lib/validate'
 import { weeksOf } from '@/lib/derive'
 import { generateDraft } from '@/lib/generateClient'
-
-/**
- * 대체 문구를 쓴 이유를 사람 말로.
- * 이유가 안 잡힌 경우(예: 예전에 저장된 초안)는 재생성을 권한다 — 원인 코드는
- * 새 초안부터 실리기 때문이다.
- */
-function fallbackReasonLabel(reason?: string): string {
-  switch (reason) {
-    case 'not-allowed':
-      return '이 계정은 아직 AI 문안 사용 승인이 없습니다 (관리자 → 사용자 승인)'
-    case 'no-key':
-      return '서버에 OpenRouter API 키가 없습니다'
-    case 'http-401':
-      return 'API 키가 올바르지 않습니다 (401)'
-    case 'http-402':
-      return 'OpenRouter 크레딧이 부족합니다 (402)'
-    case 'http-404':
-      return '설정된 모델 이름을 OpenRouter가 모릅니다 (404)'
-    case 'http-429':
-      return '호출이 너무 잦습니다 (429) — 잠시 뒤 다시 생성'
-    case 'network':
-      return '모델 서버에 연결하지 못했습니다'
-    case 'parse':
-      return '모델 응답을 읽지 못했습니다'
-    default:
-      return reason
-        ? `호출 실패 (${reason})`
-        : '예전에 만든 초안입니다 — 원인을 보려면 다시 생성하세요'
-  }
-}
 
 export function Download() {
   const { school, go, setAiDraft, focusOn, confirmPerfProgress } = usePlanStore()
@@ -62,26 +33,27 @@ export function Download() {
   const fileName = `${subject.name}_${plan.semester}학기_계획서.hwpx`
   const ai = plan.ai
 
+  /*
+   * 한글 파일을 **브라우저에서** 조립한다 — 서버가 없다(정적 호스팅).
+   * 양식을 받아 와 renderForm을 그대로 돌린다. 계획서 데이터가 어디로도
+   * 전송되지 않는다는 뜻이기도 하다.
+   */
   const download = async () => {
     if (!ai) return go('generating')
     setBusy(true)
     setError(null)
     setWarnings([])
     try {
-      const res = await fetch('/api/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan, subject, school, ai }),
-      })
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(j.error ?? `내려받기 실패 (${res.status})`)
-      }
-      const raw = res.headers.get('X-Render-Warnings')
-      if (raw) setWarnings(JSON.parse(decodeURIComponent(raw)) as string[])
+      const tpl = await fetch('/form_2026.hwpx')
+      if (!tpl.ok) throw new Error('양식 파일을 불러오지 못했습니다')
+      const template = new Uint8Array(await tpl.arrayBuffer())
 
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
+      // 조립 코드는 무겁다(잘라서 필요할 때만 싣는다)
+      const { renderForm } = await import('@/lib/hwpx/renderForm')
+      const { bytes, report } = await renderForm(template, plan, subject, school, ai)
+      setWarnings(report.warnings)
+
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/hwp+zip' }))
       const a = document.createElement('a')
       a.href = url
       a.download = fileName
@@ -177,7 +149,7 @@ export function Download() {
 
       <div className="flex flex-col gap-3 rounded-box border border-line px-6 py-5">
         <div className="flex items-baseline justify-between">
-          <span className="sec-title">AI 문안</span>
+          <span className="sec-title">문안 초안</span>
           {ai && (
             <a className="text-[13px]" onClick={() => void regenerate()}>
               {regen ? '다시 만드는 중…' : '다시 생성'}
@@ -191,9 +163,8 @@ export function Download() {
         ) : (
           <>
             <span className="text-sm text-ink-2">
-              {ai.fallback
-                ? `대체 문구 사용 — ${fallbackReasonLabel(ai.fallback_reason)}. 문서의 빨간 글씨는 상투 문안입니다. '다시 생성'으로 재시도할 수 있습니다.`
-                : `${ai.model} · ${new Date(ai.created_at).toLocaleString('ko-KR')}`}
+              {new Date(ai.created_at).toLocaleString('ko-KR')} 생성 — 문서의 빨간 글씨는 자동
+              문안이니 읽고 다듬어 주세요
             </span>
             {ai.warnings.length > 0 && (
               <div className="flex flex-col gap-1 text-[13px] text-amber-ink">
@@ -219,7 +190,7 @@ export function Download() {
         </div>
         <ColorKey />
         <span className="hint">
-          한글 2020 이상에서 열립니다 · 빨간 글씨(AI 초안)를 읽고 검정으로 바꾸며 검토하세요 ·
+          한글 2020 이상에서 열립니다 · 빨간 글씨(자동 문안)를 읽고 검정으로 바꾸며 검토하세요 ·
           배경색 칸(예정시간·실시누계)은 직접 채웁니다
         </span>
         {error && <span className="text-sm text-red">{error}</span>}

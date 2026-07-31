@@ -45,7 +45,7 @@ export function SubjectPicker({
 
   useEffect(() => {
     let alive = true
-    fetch('/api/subjects')
+    fetch('/data/subjects.json')
       .then((r) => r.json())
       .then((j: { subjects?: string[] }) => {
         if (alive) setNames(j.subjects ?? [])

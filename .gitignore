@@ -35,3 +35,9 @@ temp/
 # 참고용 실물 계획서 — 교사 실명·학교명이 들어 있다.
 # 저장소가 공개라 절대 커밋하지 않는다. 여기 넣고 스크립트로만 읽는다.
 samples/
+
+# 빌드 때 xlsx에서 굽는 정적 과목 데이터 (scripts/build-subjects.ts)
+/public/data/
+# 정적 배포 산출물
+/out/
+/public/form_2026.hwpx

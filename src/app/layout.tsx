@@ -9,7 +9,7 @@ import './globals.css'
  * 된다 — 카카오톡·메신저는 상대 경로 이미지를 못 읽는다.
  */
 export const metadata: Metadata = {
-  metadataBase: new URL('https://edit--edit-help.us-east4.hosted.app'),
+  metadataBase: new URL('https://edit-help.web.app'),
   title: '평가계획 편집기',
   description: '선생님, 편집은 제가 합니다 — 입력은 한 번, 20쪽 계획서는 자동 완성.',
   icons: { icon: '/school-logo.png' },

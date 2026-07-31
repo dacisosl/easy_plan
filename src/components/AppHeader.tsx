@@ -8,9 +8,6 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { useMe } from '@/components/AuthGate'
-import { Portal } from '@/components/ui'
-import { signInWithGoogle, signOutEverywhere } from '@/lib/firebase/client'
 import { usePlanStore, type ScreenId } from '@/store/usePlanStore'
 
 const DOING: Record<ScreenId, string> = {
@@ -23,27 +20,6 @@ const DOING: Record<ScreenId, string> = {
 
 export function AppHeader() {
   const { screen, go, currentPlanId, startNew } = usePlanStore()
-  const me = useMe()
-  const [authBusy, setAuthBusy] = useState(false)
-
-  /*
-   * 인증은 여기서 바로 구글 창을 띄운다 — 로그인 페이지로 건너보내지 않는다.
-   * 첫 화면은 도구의 얼굴이지 로그인 관문이 아니고, 인증은 AI 문안을 쓸 사람만
-   * 필요할 때 누르는 버튼 하나면 된다.
-   */
-  const authenticate = async () => {
-    setAuthBusy(true)
-    try {
-      await signInWithGoogle()
-      // 이름을 정했는지는 AuthGate가 다시 판단한다 — 새로 읽는 게 가장 확실하다
-      window.location.reload()
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : ''
-      // 사용자가 창을 닫은 것은 오류가 아니다 — 조용히 되돌린다
-      if (!/popup-closed|cancelled/i.test(msg)) window.alert(msg || '인증에 실패했습니다')
-      setAuthBusy(false)
-    }
-  }
   /*
    * 학교 마크 — public/school-logo.png 를 넣으면 뜨고, 없으면 '평' 사각형으로.
    * onError만으로는 부족하다. 리액트가 붙기 전에 이미 실패해 있으면 그 이벤트를
@@ -215,143 +191,9 @@ export function AppHeader() {
             <span className="hidden sm:inline">참고자료</span>
           </button>
 
-          {/*
-           * 인증은 선택이다 — 여는 것은 AI 문안 하나.
-           * 로컬(설정 없음)에서는 아무것도 안 보인다. 없는 문을 그려 두면 눌러 보게 된다.
-           */}
-          {me?.authDisabled ? null : me?.email ? (
-            <UserMenu name={me.displayName ?? me.email} email={me.email} />
-          ) : (
-            <button
-              className="btn btn-sm whitespace-nowrap"
-              onClick={authenticate}
-              disabled={authBusy}
-              title="구글 계정으로 인증하면 AI 문안을 쓸 수 있습니다"
-            >
-              {authBusy ? '인증 중…' : '해밀고 인증'}
-            </button>
-          )}
         </div>
       </div>
     </header>
   )
 }
 
-/* ── 로그인한 사람 메뉴 — 이름을 누르면 이름 변경 · 로그아웃 ── */
-
-function UserMenu({ name, email }: { name: string; email: string }) {
-  const [open, setOpen] = useState(false)
-  const [renaming, setRenaming] = useState(false)
-
-  return (
-    <div className="relative">
-      <button
-        className="btn btn-sm btn-ghost max-w-[120px] truncate whitespace-nowrap"
-        title={email}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {name}
-      </button>
-
-      {open && (
-        <>
-          {/* 바깥을 누르면 닫힌다 */}
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute top-full right-0 z-30 mt-1.5 flex w-36 flex-col overflow-hidden rounded-control border border-line-input bg-surface py-1 shadow-lg">
-            <span className="truncate border-b border-line-soft px-3.5 pt-1 pb-2 text-[12px] text-ink-3">
-              {email}
-            </span>
-            <button
-              className="cursor-pointer border-0 bg-transparent px-3.5 py-2 text-left text-[13.5px] text-ink hover:bg-surface-sub"
-              onClick={() => {
-                setOpen(false)
-                setRenaming(true)
-              }}
-            >
-              이름 변경
-            </button>
-            <button
-              className="cursor-pointer border-0 bg-transparent px-3.5 py-2 text-left text-[13.5px] text-ink hover:bg-surface-sub"
-              onClick={() => signOutEverywhere().then(() => window.location.reload())}
-            >
-              로그아웃
-            </button>
-          </div>
-        </>
-      )}
-
-      {renaming && <RenameDialog current={name} onClose={() => setRenaming(false)} />}
-    </div>
-  )
-}
-
-/** 표시 이름 바꾸기 — 처음 정할 때(NameStep)와 같은 규칙: 2~20자 */
-function RenameDialog({ current, onClose }: { current: string; onClose: () => void }) {
-  const [value, setValue] = useState(current)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const len = [...value.trim()].length
-  const ready = len >= 2 && len <= 20 && value.trim() !== current
-
-  const save = async () => {
-    setError(null)
-    setBusy(true)
-    try {
-      const res = await fetch('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName: value.trim() }),
-      })
-      const body = (await res.json()) as { error?: string }
-      if (!res.ok) throw new Error(body.error ?? '저장하지 못했습니다')
-      // 이름은 여러 곳(헤더·승인 명단)이 본다 — 새로 읽는 것이 가장 확실하다
-      window.location.reload()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '저장하지 못했습니다')
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Portal>
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,28,36,0.35)] p-0 sm:p-6"
-        onClick={onClose}
-      >
-        <div
-          className="mx-4 flex w-full max-w-[340px] flex-col gap-4 rounded-card bg-surface p-6"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span className="text-base font-semibold">이름 변경</span>
-          <input
-            className="control"
-            value={value}
-            maxLength={20}
-            autoFocus
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && ready && !busy) save()
-              if (e.key === 'Escape') onClose()
-            }}
-          />
-          <span className="h-4 text-[12.5px] text-ink-3">
-            {error ? (
-              <span className="text-red">{error}</span>
-            ) : (
-              `${len}/20 · 계획서와 승인 명단에 쓰입니다`
-            )}
-          </span>
-          <div className="flex items-center justify-end gap-2">
-            <button className="btn btn-sm btn-ghost" onClick={onClose}>
-              취소
-            </button>
-            <button className="btn btn-sm" disabled={!ready || busy} onClick={save}>
-              {busy ? '저장 중…' : '저장'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Portal>
-  )
-}

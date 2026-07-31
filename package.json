@@ -11,13 +11,13 @@
     "test": "vitest run",
     "verify:hwpx": "tsx scripts/verify-hwpx.ts",
     "render:test": "tsx scripts/test-render.ts",
-    "seed:subject": "tsx scripts/seed-subject.ts"
+    "seed:subject": "tsx scripts/seed-subject.ts",
+    "prebuild": "tsx scripts/build-subjects.ts",
+    "predev": "tsx scripts/build-subjects.ts",
+    "deploy": "npm run build && firebase-tools deploy --only hosting --project edit-help"
   },
   "dependencies": {
-    "@opentelemetry/api": "^1.9.1",
     "@xmldom/xmldom": "^0.9.7",
-    "firebase": "^12.16.0",
-    "firebase-admin": "^14.2.0",
     "jszip": "^3.10.1",
     "next": "^15.1.6",
     "react": "^19.0.0",

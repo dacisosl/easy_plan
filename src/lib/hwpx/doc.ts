@@ -117,9 +117,10 @@ export class HwpxDoc {
       order.push(name)
       files.set(name, await zip.files[name].async('uint8array'))
     }
+    // TextDecoder — Buffer는 노드 전용이라 브라우저에서 조립할 수 없다
     const parse = (name: string) =>
       new DOMParser().parseFromString(
-        Buffer.from(files.get(name)!).toString('utf8'),
+        new TextDecoder().decode(files.get(name)!),
         'text/xml',
       ) as unknown as Document
     const name = `Contents/section${section}.xml`
@@ -852,7 +853,7 @@ export class HwpxDoc {
     const write = (name: string, document: Document) => {
       const serialized = new XMLSerializer().serializeToString(document as never)
       const xml = serialized.trimStart().startsWith('<?xml') ? serialized : XML_DECL + serialized
-      this.files.set(name, new Uint8Array(Buffer.from(xml, 'utf8')))
+      this.files.set(name, new TextEncoder().encode(xml))
     }
     write(this.sectionName, this.doc)
     write(HEADER, this.headerDoc)

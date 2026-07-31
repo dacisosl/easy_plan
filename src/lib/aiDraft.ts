@@ -1,13 +1,10 @@
 /**
- * AI 초안 — 프롬프트 · 결정적 fallback · 입력 지문.
+ * 문안 초안 — 결정적 문장 생성 · 입력 지문.
  *
- * 원칙: AI는 문장만 쓴다. 숫자(배점·비율·요소 수·주차)는 전부 코드가 정한다.
- * 키가 없거나 호출이 실패하면 결정적 대체 문구로 완결된다 — 파이프라인은 멈추지 않는다.
- *
- * 서버(/api/generate)와 스크립트에서만 쓴다. 프롬프트를 클라이언트에 내보내지 않는다.
+ * 원칙: 숫자(배점·비율·요소 수·주차)는 전부 코드가 정한다.
+ * 브라우저에서 그대로 돈다 — 서버 없이 정적 호스팅으로 배포하기 때문이다.
  */
 
-import { createHash } from 'node:crypto'
 import type {
   AiDraft,
   Performance,
@@ -44,7 +41,23 @@ export function inputHash(plan: SemesterPlan, subject: Subject): string {
       p.method_checks,
     ]),
   })
-  return createHash('sha256').update(src).digest('hex').slice(0, 16)
+  return fnv1a(src)
+}
+
+/**
+ * FNV-1a 해시 — 입력이 같은지만 보면 되므로 암호 해시가 필요 없다.
+ * (node:crypto는 브라우저에 없다 — 정적 배포에서는 여기도 브라우저에서 돈다)
+ */
+function fnv1a(s: string): string {
+  let h1 = 0x811c9dc5
+  let h2 = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h1 = Math.imul(h1 ^ s.charCodeAt(i), 0x01000193) >>> 0
+  }
+  for (let i = s.length - 1; i >= 0; i--) {
+    h2 = Math.imul(h2 ^ s.charCodeAt(i), 0x01000193) >>> 0
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')
 }
 
 /* ── 결정적 fallback ─────────────────────────── */

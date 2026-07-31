@@ -6,20 +6,18 @@
  *  ① 학사일정: 학기별 주차(시작·종료·수업일수·행사·정기시험 주)
  *  ② 예정시간 배포표: 주당 이수시간별 주차 예정시간 — 양식 메모7이 요구하는 값
  *  ③ 학교 규칙: 새 계획서의 기본값
- *  ④ 사용자 승인: 누구에게 AI 문안을 열어 줄지 (관리자에게만 보인다)
  *
  * 여기 값이 바뀌면 진도 배분·월 주차 라벨·진도표 예정시간이 전부 따라 움직인다.
  */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Screen } from '@/components/ui'
-import { useMe } from '@/components/AuthGate'
-import { signInWithEmail, signInWithGoogle, signOutEverywhere } from '@/lib/firebase/client'
 import { usePlanStore } from '@/store/usePlanStore'
 import { scheduledHours, weeksOf } from '@/lib/derive'
+import { getModelKey, setModelKey, testModelKey } from '@/lib/generateClient'
 import type { AcademicCalendar, Week } from '@/types'
 
-type Tab = 'calendar' | 'hours' | 'rules' | 'users'
+type Tab = 'calendar' | 'hours' | 'rules'
 
 const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'calendar', label: '학사일정', hint: '주차 · 수업일수 · 정기시험 주' },
@@ -27,28 +25,16 @@ const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'rules', label: '학교 규칙', hint: '새 계획서의 기본값' },
 ]
 
-const USERS_TAB = { id: 'users' as Tab, label: '사용자 승인', hint: 'AI 문안을 쓸 사람 정하기' }
 
 /** 배포표에서 다룰 주당 이수시간 */
 const CREDITS = [1, 2, 3, 4, 5]
 
 export function Admin() {
   const { school, patchSchool, go } = usePlanStore()
-  const me = useMe()
   const [tab, setTab] = useState<Tab>('calendar')
   const [semester, setSemester] = useState<1 | 2>(1)
 
-  // 승인 탭은 관리자에게만 보인다. 숨기는 것은 예의일 뿐이고, 실제 자물쇠는 서버에 있다
-  const tabs = me?.admin ? [...TABS, USERS_TAB] : TABS
 
-  /*
-   * 관리자 화면 전체를 관리자 인증 뒤에 둔다. 여기서만 구글과 이메일 두 길을
-   * 다 보여 준다 — 교사용 '해밀고 인증'은 구글 하나다. 길이 둘이면 묻게 된다.
-   * 로컬(로그인 설정 없음)에서는 그냥 연다.
-   */
-  if (!me?.authDisabled && !me?.admin) {
-    return <AdminAuth loggedInAs={me?.email ?? null} onBack={() => go('home')} />
-  }
 
   const patchCalendar = (next: AcademicCalendar) =>
     patchSchool({
@@ -72,7 +58,7 @@ export function Admin() {
       }
     >
       <div className="flex gap-1 overflow-x-auto border-b border-line-soft">
-        {tabs.map((t) => (
+        {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
@@ -99,7 +85,6 @@ export function Admin() {
       )}
       {tab === 'hours' && <HoursTab />}
       {tab === 'rules' && <RulesTab />}
-      {tab === 'users' && <UsersTab myUid={me?.uid ?? ''} />}
     </Screen>
   )
 }
@@ -415,261 +400,73 @@ function RulesTab() {
           6월 5주.
         </span>
       </label>
+
+      <ModelKeySection />
     </div>
   )
 }
 
-/* ── ④ 사용자 승인 ────────────────────────────── */
 
-interface UserRow {
-  uid: string
-  email: string
-  displayName: string | null
-  googleName: string | null
-  approved: boolean
-  admin: boolean
-  lastSeenAt: string | null
-  approvedBy: string | null
-}
 
-/** '7월 30일 오후 2:15' 정도로 — 연도까지 적으면 표가 시끄럽다 */
-function whenLabel(iso: string | null): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`
-}
+/* ── AI 문안 키 (선택) ─────────────────────────── */
 
 /**
- * 들어온 사람들을 보여 주고 AI 문안 사용을 열어 준다.
+ * OpenRouter API 키 — 넣으면 문안 초안을 AI가 다듬는다.
  *
- * 승인은 '들어오는 문'이 아니다 — 승인 없이도 계획서를 짜고 한글 파일을 받을 수 있다.
- * 이 스위치가 여는 것은 학교 예산으로 도는 AI 문안 하나다. 화면에도 그렇게 적어 둔다.
+ * 키는 **이 브라우저에만** 저장된다. 서버가 없으니 어디에도 모이지 않고
+ * OpenRouter로만 전송된다. 비우고 저장하면 지워진다.
+ * 공용 컴퓨터라면 쓰고 나서 지우는 것이 안전하다.
  */
-function UsersTab({ myUid }: { myUid: string }) {
-  const [users, setUsers] = useState<UserRow[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  /** 지금 저장 중인 사람 — 버튼을 두 번 누르는 것을 막는다 */
-  const [busyUid, setBusyUid] = useState<string | null>(null)
+function ModelKeySection() {
+  const [key, setKey] = useState(getModelKey())
+  const [saved, setSaved] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [checkResult, setCheckResult] = useState<string | null>(null)
 
-  const load = () => {
-    fetch('/api/admin/users')
-      .then(async (r) => {
-        const b = (await r.json()) as { users?: UserRow[]; error?: string }
-        if (!r.ok) throw new Error(b.error ?? '명단을 가져오지 못했습니다')
-        return b.users ?? []
-      })
-      .then(setUsers)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : '명단을 가져오지 못했습니다'),
-      )
+  const save = () => {
+    setModelKey(key)
+    setSaved(true)
+    setCheckResult(null)
+    setTimeout(() => setSaved(false), 1800)
   }
 
-  useEffect(load, [])
-
-  const toggle = async (u: UserRow) => {
-    setError(null)
-    setBusyUid(u.uid)
-    try {
-      const res = await fetch('/api/admin/users', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: u.uid, approved: !u.approved }),
-      })
-      const b = (await res.json()) as { users?: UserRow[]; error?: string }
-      if (!res.ok) throw new Error(b.error ?? '저장하지 못했습니다')
-      setUsers(b.users ?? [])
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '저장하지 못했습니다')
-    } finally {
-      setBusyUid(null)
-    }
+  const check = async () => {
+    setChecking(true)
+    setCheckResult(null)
+    const err = await testModelKey(key)
+    setCheckResult(err ?? 'ok')
+    setChecking(false)
   }
-
-  if (error) {
-    return (
-      <p className="rounded-control border border-red-line bg-red-bg px-4 py-3 text-[13.5px] leading-relaxed text-red-ink">
-        {error}
-      </p>
-    )
-  }
-  if (!users) return <p className="hint">명단을 가져오는 중…</p>
-
-  const waiting = users.filter((u) => !u.approved).length
 
   return (
-    <div className="flex flex-col gap-4">
-      <p className="hint max-w-[620px] leading-relaxed">
-        승인은 <b>AI 문안</b>을 쓸 수 있게 하는 것입니다. 승인하지 않아도 계획서를 만들고 한글
-        파일로 내려받는 일은 됩니다 — 빨간 글씨가 고정 문구로 나올 뿐입니다.
-        {waiting > 0 && <> 지금 {waiting}명이 기다립니다.</>}
-      </p>
-
-      <div className="flex flex-col divide-y divide-line-soft rounded-control border border-line-soft">
-        {users.length === 0 && <p className="hint px-4 py-6 text-center">아직 아무도 없습니다.</p>}
-
-        {users.map((u) => (
-          <div key={u.uid} className="flex items-center gap-3 px-4 py-3">
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-[14.5px] font-medium text-ink">
-                {u.displayName ?? u.googleName ?? '이름 미정'}
-                {u.admin && <span className="ml-2 text-[12px] font-normal text-navy">관리자</span>}
-                {u.uid === myUid && (
-                  <span className="ml-2 text-[12px] font-normal text-ink-3">나</span>
-                )}
-              </span>
-              <span className="truncate text-[12.5px] text-ink-3">
-                {u.email} · 최근 {whenLabel(u.lastSeenAt)}
-                {u.approvedBy && ` · ${u.approvedBy} 승인`}
-              </span>
-            </div>
-
-            {u.admin ? (
-              // 관리자는 스위치가 없다 — 끌 수 없는 스위치를 보여 주면 눌러 보게 된다
-              <span className="shrink-0 text-[12.5px] text-ink-3">항상 사용</span>
-            ) : (
-              <button
-                className={`btn btn-sm shrink-0 ${u.approved ? 'btn-ghost' : ''}`}
-                disabled={busyUid === u.uid}
-                onClick={() => toggle(u)}
-              >
-                {busyUid === u.uid ? '…' : u.approved ? '해제' : '승인'}
-              </button>
-            )}
-          </div>
-        ))}
+    <div className="flex max-w-[560px] flex-col gap-2 border-t border-line-soft pt-5">
+      <span className="label">AI 문안 (선택) — OpenRouter API 키</span>
+      <div className="flex gap-2">
+        <input
+          className="control flex-1"
+          type="password"
+          placeholder="sk-or-…  (비우고 저장하면 지워집니다)"
+          value={key}
+          autoComplete="off"
+          onChange={(e) => setKey(e.target.value)}
+        />
+        <button className="btn btn-sm shrink-0" onClick={save}>
+          {saved ? '저장됨 ✓' : '저장'}
+        </button>
+        <button className="btn btn-sm btn-ghost shrink-0" onClick={check} disabled={checking}>
+          {checking ? '확인 중…' : '연결 확인'}
+        </button>
       </div>
-
-      <button className="btn btn-sm btn-ghost self-start" onClick={load}>
-        다시 불러오기
-      </button>
+      {checkResult && (
+        <span className={`text-[13px] ${checkResult === 'ok' ? 'text-navy' : 'text-red'}`}>
+          {checkResult === 'ok' ? '연결됐습니다 — 문안 초안을 AI가 다듬습니다' : checkResult}
+        </span>
+      )}
+      <span className="hint">
+        키가 있으면 문안 초안(Ⅱ·Ⅲ·주안점·성취수준)을 AI가 과목에 맞게 쓰고, 없으면 기본
+        문구로 만듭니다 — 어느 쪽이든 계획서는 완성됩니다. 키는 이 브라우저에만 저장되고
+        OpenRouter로만 전송됩니다. 공용 컴퓨터라면 쓰고 나서 지워 주세요.
+      </span>
     </div>
-  )
-}
-
-/* ── 관리자 인증 ──────────────────────────────── */
-
-/**
- * 관리자만 여기서 인증한다 — 구글과 이메일 두 길이 다 열려 있다.
- * 이메일 계정은 Firebase 콘솔(Authentication → Users)에서 만들어 둔 관리 계정이다.
- * 앱에 가입 화면은 없다 — 아무나 계정을 만들 수 있으면 명단이 소음으로 채워진다.
- */
-function AdminAuth({ loggedInAs, onBack }: { loggedInAs: string | null; onBack: () => void }) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [busy, setBusy] = useState<'google' | 'email' | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const run = async (kind: 'google' | 'email', job: () => Promise<void>) => {
-    setError(null)
-    setBusy(kind)
-    try {
-      await job()
-      // 관리자인지는 서버가 다시 판단한다 — 새로 읽는 게 가장 확실하다
-      window.location.reload()
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '인증에 실패했습니다'
-      // 사용자가 창을 닫은 것은 오류가 아니다 — 조용히 되돌린다
-      setError(/popup-closed|cancelled/i.test(msg) ? null : msg)
-      setBusy(null)
-    }
-  }
-
-  const emailReady = email.includes('@') && password.length >= 6
-
-  return (
-    <Screen title="관리자" subtitle="관리자 계정으로 인증해야 들어올 수 있습니다">
-      <div className="mx-auto flex w-full max-w-[380px] flex-col gap-5 py-6">
-        {loggedInAs && (
-          <p className="rounded-control border border-amber-line bg-amber-bg px-3.5 py-2.5 text-[13px] leading-relaxed text-amber-ink">
-            지금 계정({loggedInAs})은 관리자가 아닙니다.
-            <br />
-            관리자 계정으로 다시 인증해 주세요.
-          </p>
-        )}
-        {error && (
-          <p className="rounded-control border border-red-line bg-red-bg px-3.5 py-2.5 text-[13px] leading-relaxed text-red-ink">
-            {error}
-          </p>
-        )}
-
-        <button
-          className="btn btn-ghost flex w-full items-center justify-center gap-3"
-          disabled={busy !== null}
-          onClick={() =>
-            run('google', async () => {
-              // 이미 다른 계정이 붙어 있으면 떼고 시작한다 — 반쯤 겹친 상태를 만들지 않는다
-              if (loggedInAs) await signOutEverywhere()
-              await signInWithGoogle()
-            })
-          }
-        >
-          {/* 구글 브랜드 마크 — 네 색을 그대로 써야 알아본다 */}
-          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
-            <path
-              fill="#4285F4"
-              d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z"
-            />
-            <path
-              fill="#34A853"
-              d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.34A9 9 0 0 0 9 18z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.96H.96a9 9 0 0 0 0 8.08l3.01-2.32z"
-            />
-            <path
-              fill="#EA4335"
-              d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3.01 2.32C4.68 5.16 6.66 3.58 9 3.58z"
-            />
-          </svg>
-          {busy === 'google' ? '인증 중…' : '구글로 인증'}
-        </button>
-
-        <div className="flex items-center gap-3 text-[12px] text-ink-4">
-          <span className="h-px flex-1 bg-line-soft" />
-          또는 관리 계정으로
-          <span className="h-px flex-1 bg-line-soft" />
-        </div>
-
-        <form
-          className="flex flex-col gap-2.5"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (emailReady && busy === null)
-              run('email', async () => {
-                if (loggedInAs) await signOutEverywhere()
-                await signInWithEmail(email, password)
-              })
-          }}
-        >
-          <input
-            className="control"
-            type="email"
-            placeholder="이메일"
-            autoComplete="username"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <input
-            className="control"
-            type="password"
-            placeholder="비밀번호"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <button className="btn w-full" type="submit" disabled={!emailReady || busy !== null}>
-            {busy === 'email' ? '인증 중…' : '로그인'}
-          </button>
-        </form>
-
-        <button
-          className="cursor-pointer self-center border-0 bg-transparent p-0 text-[13px] text-ink-3 underline-offset-4 hover:underline"
-          onClick={onBack}
-        >
-          작성으로 돌아가기
-        </button>
-      </div>
-    </Screen>
   )
 }

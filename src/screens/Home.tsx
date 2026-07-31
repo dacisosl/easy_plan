@@ -92,7 +92,8 @@ export function Home() {
     setLoading(true)
     const started = Date.now()
     try {
-      const res = await fetch(`/api/subjects/${encodeURIComponent(name)}`)
+      // 정적 호스팅 — 과목은 빌드 때 구워 둔 JSON에서 온다 (scripts/build-subjects.ts)
+      const res = await fetch(`/data/subjects/${encodeURIComponent(name)}.json`)
       if (!res.ok) throw new Error(`과목을 불러오지 못했습니다 (${res.status})`)
       const imported = await res.json()
 
