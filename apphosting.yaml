@@ -41,7 +41,7 @@ env:
     secret: openrouter-api-key
     availability: [RUNTIME]
   - variable: OPENROUTER_MODEL
-    value: anthropic/claude-sonnet-4.5
+    value: anthropic/claude-sonnet-4.6
     availability: [RUNTIME]
 
   # 관리자 명단 — 쉼표로 나열한다. 여기 적힌 사람은 승인 없이 바로 관리자이고,

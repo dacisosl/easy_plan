@@ -1,17 +1,57 @@
 'use client'
 
 /**
- * 참고자료 — 이 앱의 사용 안내.
+ * 참고자료 — 카드 세 장으로 들어가는 서랍.
  *
- * 교사가 읽는 글이다. 개발 용어를 쓰지 않고, 세 가지만 답한다:
+ *   사용안내   이 앱을 어떻게 쓰는가 (완성)
+ *   작년자료   작년 평가계획서 모음 (준비 중)
+ *   학교알리미 공시 자료 (준비 중)
+ *
+ * 사용안내는 교사가 읽는 글이다. 개발 용어 없이 세 가지만 답한다:
  *  ① 무엇을 넣고 무엇을 기획하면 되는가
  *  ② 편집기는 그 입력을 문서 어디에 어떻게 옮기는가
  *  ③ 무엇을 조심하면 되는가
  * 맨 앞의 '누가 무엇을 하나' 표가 전체 그림이다 — 사람들은 목차보다 역할 분담을 먼저 궁금해한다.
  */
 
+import { useState } from 'react'
 import { Screen } from '@/components/ui'
 import { usePlanStore } from '@/store/usePlanStore'
+
+/** 서랍의 카드 한 장 */
+function Card({
+  title,
+  desc,
+  onOpen,
+}: {
+  title: string
+  desc: string
+  /** 없으면 아직 열 수 없는 카드 — '준비 중' 표시가 붙는다 */
+  onOpen?: () => void
+}) {
+  return (
+    <button
+      className={`flex flex-col gap-1.5 rounded-box border px-5 py-5 text-left ${
+        onOpen
+          ? 'cursor-pointer border-line-card bg-surface-sub hover:border-navy-line-hover'
+          : 'cursor-default border-line-soft bg-surface-off'
+      }`}
+      onClick={onOpen}
+      disabled={!onOpen}
+    >
+      <span className="flex items-center gap-2 text-[16px] font-semibold text-ink">
+        {title}
+        {!onOpen && (
+          <span className="rounded-chip border border-line-input bg-surface px-2 py-0.5 text-[11.5px] font-normal text-ink-3">
+            준비 중
+          </span>
+        )}
+        {onOpen && <span className="ml-auto text-ink-3">→</span>}
+      </span>
+      <span className="text-[13.5px] leading-relaxed text-ink-2">{desc}</span>
+    </button>
+  )
+}
 
 /** 소제목 하나 — 번호와 제목을 붙이고 아래 내용을 받는다 */
 function Part({ no, title, children }: { no: string; title: string; children: React.ReactNode }) {
@@ -37,17 +77,42 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 
 export function Extras() {
   const { go, startNew, currentPlanId } = usePlanStore()
+  const [view, setView] = useState<'menu' | 'guide'>('menu')
+
+  if (view === 'menu') {
+    return (
+      <Screen
+        title="참고자료"
+        subtitle="계획서 작성에 곁들이는 것들"
+        right={
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => (currentPlanId ? go('home') : startNew())}
+          >
+            작성으로 돌아가기
+          </button>
+        }
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Card
+            title="사용안내"
+            desc="무엇을 넣으면 무엇이 되는지 — 역할 분담부터 주의사항까지 한 장으로."
+            onOpen={() => setView('guide')}
+          />
+          <Card title="작년자료" desc="작년 과목별 평가계획서 모음 — 참고할 실물 사례." />
+          <Card title="학교알리미" desc="학교알리미 공시 자료로 바로 가는 길." />
+        </div>
+      </Screen>
+    )
+  }
 
   return (
     <Screen
       title="사용 안내"
       subtitle="선생님은 계획만, 편집은 편집기가 — 무엇을 넣으면 무엇이 되는지"
       right={
-        <button
-          className="btn btn-sm btn-ghost"
-          onClick={() => (currentPlanId ? go('home') : startNew())}
-        >
-          작성으로 돌아가기
+        <button className="btn btn-sm btn-ghost" onClick={() => setView('menu')}>
+          ← 참고자료
         </button>
       }
     >

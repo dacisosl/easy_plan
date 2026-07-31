@@ -145,6 +145,30 @@ export function AppHeader() {
          * 편집중 · 로봇(참고자료) · 인증.
          */}
         <div className="flex items-center gap-2 justify-self-end">
+          {/* 휴대폰용 뒤로가기 — 글자 버튼 자리가 없어 화살표 아이콘 하나로 */}
+          {(currentPlanId || screen !== 'home') && (
+            <button
+              className="btn btn-sm btn-ghost px-2.5 sm:hidden"
+              onClick={screen === 'home' ? startNew : () => go('home')}
+              title="이전"
+              aria-label="이전"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M19 12H5" />
+                <path d="M12 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
           {/* max-sm:hidden — display를 갈아끼우면(sm:inline-flex) 버튼의 세로 중앙정렬이 깨진다 */}
           {currentPlanId && (
             <button
