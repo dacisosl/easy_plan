@@ -411,6 +411,26 @@ export function noticeWeek(perf: Performance, leadWeeks: number): number {
   return perf.week - leadWeeks
 }
 
+/** 학기 초 이 주 수만큼은 수행평가를 두지 않는다 — 수업이 자리를 잡는 기간 */
+export const PERF_START_AFTER_WEEKS = 4
+
+/**
+ * 수행평가를 실시할 수 있는 주차 창 — [from, to] 양끝 포함.
+ *
+ *   시작  학기 시작 4주 뒤(5주차부터)
+ *   끝    학사일정의 마지막 정기시험(2회 고사) 주 **직전**까지
+ *
+ * 끝을 계획서의 시험이 아니라 학사일정에서 잡는다 — 1회만 응시하는 과목도
+ * 2회 고사 기간 전까지는 실시할 수 있기 때문이다.
+ * 검증(규칙 19)과 자동 배치(pickWeek)가 같은 자를 써야 자동으로 놓은 자리가
+ * 검증에 걸리는 일이 없다.
+ */
+export function perfWindow(school: SchoolLayer, semester: 1 | 2): { from: number; to: number } {
+  const weeks = weeksOf(school, semester)
+  const lastExam = [...weeks].filter((w) => w.is_exam).sort((a, b) => b.no - a.no)[0]?.no
+  return { from: PERF_START_AFTER_WEEKS + 1, to: (lastExam ?? weeks.length + 1) - 1 }
+}
+
 /** 영역 만점은 반영 비율에서 나온다 (총점 100점 기준) */
 export function areaMaxFromRatio(ratio: number): number {
   return ratio

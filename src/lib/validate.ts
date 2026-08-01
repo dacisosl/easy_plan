@@ -12,7 +12,9 @@ import {
   examStandardCodes,
   monthWeekLabel,
   noticeWeek,
+  PERF_START_AFTER_WEEKS,
   perfAreaCap,
+  perfWindow,
   perfProgressFingerprint,
   ratioTotal,
   rubricMax,
@@ -27,7 +29,7 @@ import {
  * 번호는 이름표라 한번 붙이면 바꾸지 않는다 — 빠진 번호(4·14)는 그 자리에
  * 있던 규칙을 걷어냈다는 뜻이고, 이유는 해당 위치의 주석에 남겼다.
  */
-export const ACTIVE_RULES = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19]
+export const ACTIVE_RULES = [1, 2, 3, 5, 6, 7, 8, 9, 10, 12, 13, 15, 16, 17, 18, 19]
 export const RULE_COUNT = ACTIVE_RULES.length
 
 export type Severity = 'error' | 'ai'
@@ -210,24 +212,8 @@ export function validate(
     })
   }
 
-  /*
-   * 11. 수행평가가 마지막 정기시험 **기간** 이전에 완료.
-   *
-   * 기준은 계획서의 시험이 아니라 **학사일정의 마지막 시험 주**(2회 고사 기간)다.
-   * 1회만 응시하는 과목이라도 수행평가는 2회 고사 기간 전까지 실시할 수 있다 —
-   * 예전엔 그 과목의 시험(4월) 뒤 수행평가가 전부 걸리는 오탐이 있었다.
-   */
-  const lastExamWeek = [...weeks].filter((w) => w.is_exam).sort((a, b) => b.no - a.no)[0]?.no
-  if (lastExamWeek) {
-    const late = plan.performances.filter((p) => p.week > lastExamWeek)
-    if (late.length > 0) {
-      fail(11, {
-        title: `마지막 정기시험 기간(${lastExamWeek}주) 뒤에 실시하는 수행평가가 있습니다`,
-        detail: late.map((p) => `${p.name || '(이름 없음)'} ${p.week}주`).join(' · '),
-        target: 'perf',
-      })
-    }
-  }
+  /* 11번(마지막 시험 뒤 금지)은 19번 실시 창의 상한과 같은 말이라 19로 합쳤다 —
+     한 가지 문제로 두 번 알리지 않는다 */
 
   /* 13. 시험 범위 성취기준이 해당 시점까지 진도에 포함 */
   for (const e of plan.exams) {
@@ -333,20 +319,26 @@ export function validate(
     })
   }
 
-  /* 19. 수행평가 실시 창 — 1회 시험 2주 전부터 2회 시험 전까지(점검표). 2회 실시 과목만 */
-  if (plan.exam_count === 2 && plan.exams.length >= 2) {
-    const [e1, e2] = [...plan.exams].sort((a, b) => a.week - b.week)
-    for (const p of plan.performances) {
-      if (p.week < e1.week - 2 || p.week >= e2.week) {
-        fail(19, {
-          title: '수행평가 실시 시기가 권장 창을 벗어납니다',
-          detail:
-            `${p.name || '(이름 없음)'} · 실시 ${p.week}주 · ` +
-            `1회 시험(${e1.week}주) 2주 전 ~ 2회 시험(${e2.week}주) 전 사이여야 합니다`,
-          target: 'perf',
-          perfId: p.id,
-        })
-      }
+  /*
+   * 19. 수행평가 실시 창 — 학기 시작 4주 뒤부터 마지막 정기시험(2회 고사) 주 전까지.
+   *
+   * 시험 횟수와 무관하게 학사일정을 자로 쓴다. 옛 11번(마지막 시험 뒤 금지)이
+   * 여기 상한과 같은 말이라 하나로 합쳤다.
+   */
+  const win = perfWindow(school, plan.semester)
+  for (const p of plan.performances) {
+    if (p.week < win.from || p.week > win.to) {
+      const early = p.week < win.from
+      fail(19, {
+        title: early
+          ? '수행평가가 학기 초에 너무 이릅니다'
+          : '수행평가가 마지막 정기시험 기간을 넘어섭니다',
+        detail:
+          `${p.name || '(이름 없음)'} · 실시 ${p.week}주(${monthWeekLabel(school, plan.semester, p.week)}) · ` +
+          `${win.from}주 ~ ${win.to}주 사이여야 합니다 (학기 시작 ${PERF_START_AFTER_WEEKS}주 뒤 ~ 2회 정기시험 전)`,
+        target: 'perf',
+        perfId: p.id,
+      })
     }
   }
 

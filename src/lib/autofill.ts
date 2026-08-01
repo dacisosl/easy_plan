@@ -20,6 +20,7 @@ import {
   essayExempt,
   essayTotal,
   parseDate,
+  perfWindow,
   spread,
   teachingWeeks,
   weeksOf,
@@ -232,11 +233,10 @@ export interface SimpleInput {
 }
 
 /**
- * 실시 주차를 고른다. 검증 규칙 11·14·15·19를 처음부터 통과하도록 자리를 잡는다.
+ * 실시 주차를 고른다. 검증 규칙 15·19를 처음부터 통과하도록 자리를 잡는다.
  *  - 정기시험 주가 아니고 수업이 있는 주
- *  - 마지막 정기시험 이전 (규칙 11)
- *  - 2회 실시 과목은 1회 시험 2주 전 ~ 2회 시험 전 (규칙 19 · 점검표)
- *  - 이미 다른 수행평가가 잡힌 주가 아님 (규칙 14)
+ *  - 실시 창 안 — 학기 시작 4주 뒤 ~ 마지막 정기시험 주 전 (규칙 19)
+ *  - 이미 다른 수행평가가 잡힌 주가 아님 (겹치면 학생 부담이라 피한다)
  *  - 안내 주(실시 − 2주)도 수업 주여야 함 (규칙 15)
  */
 function pickWeek(
@@ -247,15 +247,10 @@ function pickWeek(
 ): number {
   const lead = school.rules.notice_lead_weeks
   const weeks = weeksOf(school, plan.semester)
-  const sorted = [...plan.exams].sort((a, b) => a.week - b.week)
-  const twoExams = plan.exam_count === 2 && sorted.length >= 2
-  const lower = twoExams ? Math.max(lead + 1, sorted[0].week - 2) : lead + 1
-  /*
-   * 상한은 규칙 11과 같은 기준 — 계획서의 시험이 아니라 **학사일정의 마지막
-   * 시험 주**(2회 고사 기간). 1회만 응시하는 과목도 그 기간 전까지는 실시할 수 있다.
-   */
-  const calLastExam = [...weeks].filter((w) => w.is_exam).sort((a, b) => b.no - a.no)[0]?.no
-  const limit = twoExams ? sorted[1].week - 1 : (calLastExam ?? weeks.length)
+  // 검증(규칙 19)과 같은 자를 쓴다 — 자동으로 놓은 자리가 검증에 걸리면 안 된다
+  const win = perfWindow(school, plan.semester)
+  const lower = Math.max(win.from, lead + 1)
+  const limit = win.to
   const teaching = new Set(teachingWeeks(weeks).map((w) => w.no))
 
   const usable = (n: number) =>

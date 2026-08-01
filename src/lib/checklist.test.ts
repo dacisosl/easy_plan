@@ -18,6 +18,7 @@ import {
   orderedStandardCodes,
   perfAreaCap,
   perfProgressFingerprint,
+  perfWindow,
   weekNoFromMonthWeek,
 } from './derive'
 import { RULE_COUNT, validate } from './validate'
@@ -181,36 +182,30 @@ describe('검증 규칙 16~19 · 2·3 수정', () => {
     expect(rulesOf(PLAN_SEED)).not.toContain(18)
   })
 
-  it('11 — 기준은 학사일정의 마지막 시험 기간이다 (1회 응시 과목 오탐 방지)', () => {
+  it('19 — 실시 창: 학기 시작 4주 뒤 ~ 마지막 정기시험(18주) 전', () => {
+    // 4주 이내는 이르다
+    const early = planWith({ performances: [perf({ week: 4 }), PLAN_SEED.performances[1]] })
+    expect(rulesOf(early)).toContain(19)
+    // 5주부터 열린다
+    const ok = planWith({ performances: [perf({ week: 5 }), PLAN_SEED.performances[1]] })
+    expect(rulesOf(ok)).not.toContain(19)
+    // 마지막 시험 주(18주) 이후는 늦다
+    const late = planWith({ performances: [perf({ week: 18 }), PLAN_SEED.performances[1]] })
+    expect(rulesOf(late)).toContain(19)
+  })
+
+  it('19 — 시험 횟수와 무관하게 학사일정을 자로 쓴다 (1회 응시 과목 오탐 방지)', () => {
     // 1회만 응시(시험 8주)해도 수행평가는 2회 고사 기간(18주) 전까지 실시할 수 있다
     const oneExam = planWith({
       exam_count: 1,
       exams: [PLAN_SEED.exams[0]],
       performances: [perf({ week: 12 }), { ...PLAN_SEED.performances[1], week: 15 }],
     })
-    expect(rulesOf(oneExam)).not.toContain(11)
-    // 2회 고사 기간(18주)을 넘기면 잡는다
-    const tooLate = planWith({
-      exam_count: 1,
-      exams: [PLAN_SEED.exams[0]],
-      performances: [perf({ week: 19 }), PLAN_SEED.performances[1]],
-    })
-    expect(rulesOf(tooLate)).toContain(11)
+    expect(rulesOf(oneExam)).not.toContain(19)
   })
 
-  it('19 — 실시 창: 1회 시험 2주 전 ~ 2회 시험 전 (2회 실시 과목만)', () => {
-    // 시험주 8·18 → 허용 창 [6, 17]
-    const early = planWith({ performances: [perf({ week: 5 }), PLAN_SEED.performances[1]] })
-    expect(rulesOf(early)).toContain(19)
-    const ok = planWith({ performances: [perf({ week: 7 }), PLAN_SEED.performances[1]] })
-    expect(rulesOf(ok)).not.toContain(19)
-    // 1회만 실시하면 창을 걸지 않는다
-    const oneExam = planWith({
-      exam_count: 1,
-      exams: [PLAN_SEED.exams[1]],
-      performances: [perf({ week: 5 }), PLAN_SEED.performances[1]],
-    })
-    expect(rulesOf(oneExam)).not.toContain(19)
+  it('perfWindow — 검증과 자동 배치가 같은 창을 본다', () => {
+    expect(perfWindow(SCHOOL_SEED, 1)).toEqual({ from: 5, to: 17 })
   })
 
   it('2 수정 — 정기시험 2회 과목은 영역 상한 40%', () => {
