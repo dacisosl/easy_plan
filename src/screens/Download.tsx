@@ -15,7 +15,7 @@ import { weeksOf } from '@/lib/derive'
 import { generateDraft } from '@/lib/generateClient'
 
 export function Download() {
-  const { school, go, setAiDraft, focusOn, confirmPerfProgress } = usePlanStore()
+  const { school, go, setAiDraft } = usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))
   const subject = usePlanStore((s) => {
     const p = s.plans.find((x) => x.id === s.currentPlanId)
@@ -96,8 +96,10 @@ export function Download() {
     ],
     ['수행평가', `${plan.performances.length}개 · ${perfSum}%`],
     [
-      '로직 검증',
-      result.errors.length === 0 ? `${RULE_COUNT}개 규칙 통과` : `오류 ${result.errors.length}개`,
+      '자동 점검',
+      result.errors.length === 0
+        ? `${RULE_COUNT}개 규칙 통과`
+        : `${RULE_COUNT}개 중 ${result.errors.length}건 확인 필요`,
     ],
   ]
 
@@ -110,42 +112,26 @@ export function Download() {
             className="flex justify-between border-b border-line-soft pb-3 text-[15px] last:border-b-0"
           >
             <span className="text-ink-2">{k}</span>
-            <span className={k === '로직 검증' && result.errors.length > 0 ? 'text-red' : ''}>
+            <span className={k === '자동 점검' && result.errors.length > 0 ? 'text-amber' : ''}>
               {v}
             </span>
           </div>
         ))}
       </div>
 
+      {/*
+       * 여기서는 알리기만 한다 — 고치는 자리는 작성 화면이고, 거기서 이미
+       * 한 번씩 보고 온 항목들이다. 같은 것을 두 화면에서 두 번 막지 않는다.
+       */}
       {result.errors.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <span className="text-sm text-red-ink">
-            로직 오류 {result.errors.length}개를 고쳐야 내려받을 수 있습니다 — 고치기를 누르면 해당
-            입력란으로 갑니다
+        <div className="notice-warn flex flex-col gap-2.5">
+          <span className="text-sm font-semibold text-amber">
+            확인하고 넘어온 점검 {result.errors.length}건 — 필요하면 ‘이전’에서 고칠 수 있습니다
           </span>
           {result.errors.map((e, i) => (
-            <div key={i} className="notice-err flex items-center justify-between gap-5">
-              <div className="flex flex-col gap-1">
-                <span className="text-[15px] font-semibold text-red">{e.title}</span>
-                <span className="text-[13px] text-red-ink">{e.detail}</span>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  className="btn btn-sm btn-danger"
-                  onClick={() => focusOn(e.target ?? 'perf')}
-                >
-                  고치기
-                </button>
-                {/*
-                 * 규칙 16만 '확인'으로 넘어갈 수 있다 — 진도를 실제와 다르게 적는
-                 * 학교도 있어 사람의 판단에 맡긴다. 확인은 지금 상태에만 유효하다.
-                 */}
-                {e.confirmable && (
-                  <button className="btn btn-sm" onClick={confirmPerfProgress}>
-                    확인했습니다
-                  </button>
-                )}
-              </div>
+            <div key={i} className="flex flex-col gap-0.5">
+              <span className="text-[13.5px] text-ink">{e.title}</span>
+              <span className="text-[12.5px] leading-relaxed text-ink-3">{e.detail}</span>
             </div>
           ))}
         </div>
@@ -186,7 +172,7 @@ export function Download() {
         <div className="flex items-center gap-4">
           <button
             className="btn btn-xl"
-            disabled={busy || result.errors.length > 0}
+            disabled={busy}
             onClick={() => (ai ? setConfirmOpen(true) : go('generating'))}
           >
             {busy ? '만드는 중…' : `${fileName} 내려받기`}

@@ -26,6 +26,14 @@ import { methodsFromIntent } from '@/lib/autofill'
 import { validate } from '@/lib/validate'
 import type { ExamPart, FocusTarget, Performance, SemesterPlan, Subject } from '@/types'
 
+/**
+ * 점검 항목 하나를 가리키는 열쇠 — 제목·상세까지 담는다.
+ * 값을 고치면 상세가 달라져 '확인함' 표시가 저절로 풀린다.
+ */
+function errorKey(e: { rule?: number; perfId?: string; detail: string }): string {
+  return `${e.rule}:${e.perfId ?? ''}:${e.detail}`
+}
+
 /** 입력 즉시 반영하되 타이핑 중에는 재계산을 미룬다 */
 function useDebounced<T>(value: T, apply: (v: T) => void, ms = 300) {
   const first = useRef(true)
@@ -416,6 +424,7 @@ function PlanForm({
     confirmPerfProgress,
     focusTarget,
     clearFocus,
+    focusOn,
   } = usePlanStore()
   const plan = usePlanStore((s) => s.plans.find((p) => p.id === s.currentPlanId))!
   const subject = usePlanStore((s) => {
@@ -434,12 +443,15 @@ function PlanForm({
    * 원래 규칙을 못 지킨다. '계획서 만들기'는 어차피 ready 조건이 막고 있다.
    */
   const showErrors = plan.performances.some((p) => p.name.trim().length > 0)
+  /* 눈으로 확인한 점검 항목 — 내용이 바뀌면 열쇠가 달라져 저절로 풀린다 */
+  const [seenErrors, setSeenErrors] = useState<Set<string>>(new Set())
   const firstError = (t: FocusTarget) =>
     showErrors ? result.errors.find((e) => e.target === t)?.title : undefined
 
   /*
-   * 수행평가 구획의 오류 — 확인으로 넘어갈 수 있는 문제(규칙 16)면 물음 옆에
-   * '확인했습니다' 버튼을 같이 둔다. 질문만 던지고 답할 길을 안 주면 막다른 골목이다.
+   * 수행평가 구획의 점검 — 규칙 16(성취기준 ↔ 진도)만은 '확인했습니다'를 같이 둔다.
+   * 이 확인은 계획서에 저장돼 다시 열어도 유지된다. 나머지 항목은 아래 점검 목록의
+   * '보러 가기'가 그 자리로 데려다주고, 보고 나면 그대로 진행할 수 있다.
    */
   const perfIssue = showErrors ? result.errors.find((e) => e.target === 'perf') : undefined
   const perfError = !perfIssue ? undefined : !perfIssue.confirmable ? (
@@ -677,6 +689,12 @@ function PlanForm({
   const perfSum = plan.performances.reduce((s, p) => s + p.ratio, 0)
   const ratioSum = plan.exam_ratio + perfSum
   const ready = plan.teachers.length > 0 && plan.performances.some((p) => p.name.trim())
+  /*
+   * 아직 눈으로 확인하지 않은 점검 항목. 이것만 '만들기'를 막는다 —
+   * 고칠지 말지는 교사가 정하되, 무엇이 걸렸는지는 한 번 보고 가야 한다.
+   * 값이 바뀌면 열쇠가 달라져 다시 확인 대상이 된다.
+   */
+  const unseenErrors = showErrors ? result.errors.filter((e) => !seenErrors.has(errorKey(e))) : []
 
   return (
     /* 제목은 상단 바 간판이 대신한다 — 화면 안에 또 두지 않는다 */
@@ -958,17 +976,64 @@ function PlanForm({
             ))}
       </Fieldset>
 
+      {/*
+       * 점검 목록 — 막지 않고 데려다준다.
+       *
+       * [보러 가기]를 누르면 그 자리로 스크롤하고, 그 항목은 '확인함'이 된다.
+       * 보고 나서 그대로 두기로 했다면 그건 교사의 판단이다 — 계획서는 만들어진다.
+       * 규칙을 아는 것과 규칙을 강요하는 것은 다르다.
+       */}
+      {showErrors && result.errors.length > 0 && (
+        <div className="flex flex-col gap-2.5 rounded-box border border-amber-line bg-amber-bg px-4 py-4 sm:px-5">
+          <span className="text-[14px] font-semibold text-amber">
+            점검할 곳 {result.errors.length}군데
+            {unseenErrors.length === 0 && ' · 모두 확인했습니다'}
+          </span>
+          {result.errors.map((e) => {
+            const key = errorKey(e)
+            const seen = seenErrors.has(key)
+            return (
+              <div key={key} className="flex items-start justify-between gap-3">
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className={`text-[13.5px] ${seen ? 'text-ink-3' : 'text-ink'}`}>
+                    {seen && '✓ '}
+                    {e.title}
+                  </span>
+                  <span className="text-[12.5px] leading-relaxed text-ink-3">{e.detail}</span>
+                </span>
+                <button
+                  className="btn btn-sm btn-ghost shrink-0"
+                  onClick={() => {
+                    setSeenErrors((prev) => new Set(prev).add(key))
+                    focusOn(e.target ?? 'perf')
+                  }}
+                >
+                  보러 가기
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       <div className="flex items-center gap-4 border-t border-line-soft pt-6">
-        <button className="btn btn-lg" disabled={!ready} onClick={onDone}>
+        <button
+          className="btn btn-lg"
+          disabled={!ready || unseenErrors.length > 0}
+          onClick={onDone}
+        >
           계획서 만들기
         </button>
-        {!ready && (
+        {!ready ? (
           <span className="text-[13px] text-ink-3">
             {plan.teachers.length === 0 ? '지도교사' : '수행평가 이름'}을 넣어 주세요
           </span>
-        )}
-        {result.errors.length > 0 && ready && (
-          <span className="text-[13px] text-amber">고칠 곳 {result.errors.length}군데</span>
+        ) : (
+          unseenErrors.length > 0 && (
+            <span className="text-[13px] text-amber">
+              점검할 곳 {unseenErrors.length}군데를 먼저 봐 주세요
+            </span>
+          )
         )}
       </div>
 

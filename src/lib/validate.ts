@@ -21,7 +21,14 @@ import {
 } from './derive'
 
 /** 로직 규칙 수 — 화면의 'N개 규칙 통과'도 이 값을 본다 */
-export const RULE_COUNT = 19
+/**
+ * 지금 검사하는 규칙 번호.
+ *
+ * 번호는 이름표라 한번 붙이면 바꾸지 않는다 — 빠진 번호(4·14)는 그 자리에
+ * 있던 규칙을 걷어냈다는 뜻이고, 이유는 해당 위치의 주석에 남겼다.
+ */
+export const ACTIVE_RULES = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19]
+export const RULE_COUNT = ACTIVE_RULES.length
 
 export type Severity = 'error' | 'ai'
 
@@ -110,18 +117,12 @@ export function validate(
   for (const p of plan.performances) {
     const label = p.name || '(이름 없음)'
 
-    /* 4. 기본점수 = 영역 만점의 20% 이상 ~ 40% 미만 */
-    if (p.max_score > 0) {
-      const pct = (p.base_score / p.max_score) * 100
-      if (pct < rules.base_score_min || pct >= rules.base_score_max) {
-        fail(4, {
-          title: '기본점수가 허용 범위를 벗어납니다',
-          detail: `${label} · 기본점수 ${p.base_score}점 · 만점 ${p.max_score}점의 ${pct.toFixed(0)}% (${rules.base_score_min}% 이상 ~ ${rules.base_score_max}% 미만)`,
-          target: 'perf',
-          perfId: p.id,
-        })
-      }
-    }
+    /*
+     * 4번(기본점수 20~40% 범위)은 뺐다 — 기본점수를 교사가 정하는 자리가 없다.
+     * 코드가 만점의 30%로 놓아 주는 값을 코드가 다시 심사하는 꼴이고, 작은 영역
+     * (5%→2점)에서는 자기가 만든 값이 자기 규칙에 걸리기까지 했다.
+     * 기본점수를 교사가 정하게 되면 그때 되살린다.
+     */
 
     /* 5. 기본점수 > 1점 */
     if (p.base_score <= 1) {
@@ -246,20 +247,11 @@ export function validate(
     }
   }
 
-  /* 14. 평가 시기가 특정 주에 몰리지 않음 */
-  const byWeek = new Map<number, string[]>()
-  for (const p of plan.performances) {
-    byWeek.set(p.week, [...(byWeek.get(p.week) ?? []), p.name || '(이름 없음)'])
-  }
-  for (const [wk, names] of byWeek) {
-    if (names.length > 1) {
-      fail(14, {
-        title: `${wk}주에 수행평가가 ${names.length}개 몰려 있습니다`,
-        detail: names.join(' · '),
-        target: 'perf',
-      })
-    }
-  }
+  /*
+   * 14번(한 주에 수행평가 하나)은 차단에서 내렸다 — 학교 지침에 없는 기준이다.
+   * 같은 주에 둘을 보는 것이 학생에게 부담인 것은 맞지만, 그건 교사가 판단할
+   * 일이지 문서를 못 만들게 막을 일이 아니다. 참고 점검(aiReview)으로 옮겼다.
+   */
 
   /* 15. 안내 주가 시험주·비수업주와 겹치지 않음 */
   const teachSet = new Set(teachingWeeks(weeks).map((w) => w.no))
@@ -358,7 +350,7 @@ export function validate(
     }
   }
 
-  const passed = Array.from({ length: RULE_COUNT }, (_, i) => i + 1).filter((n) => !failed.has(n))
+  const passed = ACTIVE_RULES.filter((n) => !failed.has(n))
   return { errors, ai: aiReview(plan, subject, school), passed, unassignedStandards }
 }
 
@@ -433,6 +425,22 @@ export function aiReview(plan: SemesterPlan, subject: Subject, school: SchoolLay
         detail: '평가 요소가 무엇을 측정하는지 확인할 수 없습니다',
         target: 'perf',
         perfId: p.id,
+      })
+    }
+  }
+
+  // 같은 주에 수행평가가 겹치는가 — 막지는 않는다(지침이 아니다). 학생 부담만 짚어 준다
+  const byWeek = new Map<number, string[]>()
+  for (const p of plan.performances) {
+    byWeek.set(p.week, [...(byWeek.get(p.week) ?? []), p.name || '(이름 없음)'])
+  }
+  for (const [wk, names] of byWeek) {
+    if (names.length > 1) {
+      out.push({
+        severity: 'ai',
+        title: `${wk}주에 수행평가가 ${names.length}개 몰려 있습니다`,
+        detail: `${names.join(' · ')} — 학생 부담을 한 번 살펴보세요`,
+        target: 'perf',
       })
     }
   }
