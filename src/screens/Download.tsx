@@ -153,8 +153,8 @@ export function Download() {
         ) : (
           <>
             <span className="text-sm text-ink-2">
-              {new Date(ai.created_at).toLocaleString('ko-KR')} 생성 — 문서의 빨간 글씨는 자동
-              문안이니 읽고 다듬어 주세요
+              {new Date(ai.created_at).toLocaleString('ko-KR')} 생성 — 문서의 빨간 글씨는 확인이
+              필요한 곳이니 읽고 다듬어 주세요
             </span>
             {ai.warnings.length > 0 && (
               <div className="flex flex-col gap-1 text-[13px] text-amber-ink">
@@ -190,8 +190,8 @@ export function Download() {
         </div>
         <ColorKey />
         <span className="hint">
-          한글 2020 이상에서 열립니다 · 빨간 글씨(자동 문안)를 읽고 검정으로 바꾸며 검토하세요 ·
-          배경색 칸(예정시간·실시누계)은 직접 채웁니다
+          한글 2020 이상에서 열립니다 · 빨간 글씨(단원·성취기준·문안)를 읽고 검정으로 바꾸며
+          검토하세요 · 배경색 칸(예정시간·실시누계)은 직접 채웁니다
         </span>
         {error && <span className="text-sm text-red">{error}</span>}
         {warnings.length > 0 && (
@@ -234,7 +234,7 @@ function DownloadNotice({ onConfirm, onClose }: { onConfirm: () => void; onClose
                 1
               </span>
               <p className="text-[16px] leading-relaxed break-keep text-ink sm:text-[17px]">
-                AI로 생성한 초안(<b className="text-red">빨간 글씨</b>)은{' '}
+                <b className="text-red">빨간 글씨</b>(단원명 · 성취기준 · AI 문안)는{' '}
                 <b>반드시 검토해 주세요.</b>
               </p>
             </div>

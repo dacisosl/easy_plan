@@ -211,8 +211,19 @@ export async function renderForm(
 
       doc.setCell(progress, r, 0, String(w.no))
       doc.setCell(progress, r, 1, periodLabel(w).replace(/–/g, '~'))
-      doc.setCell(progress, r, 2, w.is_exam ? '' : [areaLine, unitLine].filter(Boolean))
-      doc.setCell(progress, r, 3, w.is_exam ? '' : stdLines.length ? stdLines : '')
+      /*
+       * 단원명·성취기준도 빨간 글씨로 낸다.
+       *
+       * 코드가 계산한 값이라 틀릴 일이 없어 보이지만, 배분은 '어느 주에 무엇을'이라는
+       * 판단이고 그건 교사가 확인해야 한다 — 앵커를 어디로 잡았는지에 따라 얼마든지
+       * 달라진다. 읽고 검정으로 바꾸는 것이 곧 검토 절차다.
+       */
+      doc.setCell(progress, r, 2, w.is_exam ? '' : [areaLine, unitLine].filter(Boolean), {
+        red: !w.is_exam,
+      })
+      doc.setCell(progress, r, 3, w.is_exam ? '' : stdLines.length ? stdLines : '', {
+        red: !w.is_exam,
+      })
       doc.setCell(progress, r, 4, lines.length ? lines : '', { red: !w.is_exam && !!ai })
       /*
        * 예정시간 / 실시누계 — 배포표가 있으면 그 값, 없으면 수업일수로 계산.

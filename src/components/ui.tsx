@@ -398,7 +398,7 @@ export function ColorKey() {
         <span className="font-semibold text-ink">검정</span> 코드가 계산한 값
       </span>
       <span>
-        <span className="font-semibold text-red">빨강</span> AI 초안 — 한글에서 읽고 검정으로
+        <span className="font-semibold text-red">빨강</span> 확인이 필요한 곳 — 읽고 검정으로
       </span>
       <span>
         <span className="rounded-[3px] bg-[#FFF3C4] px-1.5 py-0.5 text-ink-2">배경색</span> 직접
