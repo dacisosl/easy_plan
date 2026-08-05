@@ -525,20 +525,22 @@ function PlanForm({
   /**
    * 회차별 시험 범위(앵커)를 자동으로 잡는다.
    *
-   *  - 두 번 보면 1회는 성취기준의 절반쯤에서 끊고, 2회(기말)는 끝까지 간다.
-   *  - 한 번만 보면 그 시험이 학기의 어디쯤에 있는지에 비례해 끊는다.
-   *    (1회 고사만 보는데 끝까지로 잡으면 전 과정이 중간고사 전으로 몰린다.)
+   * 마지막 회차는 끝까지, 나머지는 **그 시험 앞에 수업 주가 몇 주나 있는지에 비례**해
+   * 끊는다. 시험 앞의 주 수만큼만 진도를 잡아야 한 주에 하나씩 놓인다.
+   *
+   * 예전에는 2회를 볼 때 1회를 '성취기준의 절반'으로 끊었는데, 1회 고사(8주) 앞에는
+   * 수업 주가 19주 중 7주뿐이라 절반(9개)을 7주에 밀어 넣게 됐다 — 한 주에 두 개가
+   * 겹치는 칸이 여기서 생겼다. 절반이라는 숫자에 근거가 없었다.
    */
   const autoAnchors = <T extends { no: number; week: number; anchor_code: string | null }>(
     exams: T[],
   ): T[] => {
     const n = codes.length
     if (n === 0) return exams
-    const hasFinal = exams.some((e) => e.no === 2)
+    const lastNo = Math.max(...exams.map((e) => e.no))
     return exams.map((e) => {
       let idx: number
-      if (e.no === 2) idx = n - 1
-      else if (hasFinal) idx = Math.round(n / 2) - 1
+      if (e.no === lastNo) idx = n - 1
       else {
         const upto = teachWeeks.filter((w) => w.no < e.week).length
         idx = Math.round((n * upto) / Math.max(1, teachWeeks.length)) - 1

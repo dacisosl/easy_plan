@@ -172,11 +172,21 @@ export async function renderForm(
         ReturnType<typeof unitOfCode>
       >[]
 
-      // 단원명 칸 — 윗줄 영역, 아랫줄 단원명
+      /*
+       * 단원명 칸 — 윗줄 영역, 아랫줄 단원명.
+       *
+       * 소단원을 따로 나누지 않은 과목은 영역이 그대로 단원이 된다(unitsFromAreas).
+       * 그때 두 줄을 다 쓰면 같은 이름이 두 번 찍힌다:
+       *   Ⅰ. 지수함수와 로그함수 / 01. 지수함수와 로그함수
+       * 앞 번호만 다를 뿐 같은 말이면 아랫줄을 접는다.
+       */
       const areaLine = [...new Set(units.map((u) => u.area_no))]
         .map((no) => `${areaRoman(no)}. ${areaName(no)}`)
         .join(' / ')
-      const unitLine = units.map((u) => u.name).join(' / ')
+      const bare = (s: string) => s.replace(/^\s*[0-9]+\s*[.．]\s*/, '').trim()
+      const sameAsArea =
+        units.length > 0 && units.every((u) => bare(u.name) === bare(areaName(u.area_no)))
+      const unitLine = sameAsArea ? '' : units.map((u) => u.name).join(' / ')
 
       // 두 주에 걸친 성취기준은 뒷주에 (계속)을 붙여 반복이 아님을 드러낸다
       const stdLines = codes.map((c) => {
