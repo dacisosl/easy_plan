@@ -10,7 +10,7 @@ import type {
   Subject,
   Unit,
 } from '@/types'
-import { SCHOOL_SEED } from '@/data/school'
+import { SCHOOL_SEED, WEEKS_2026_2 } from '@/data/school'
 import { PLAN_SEED, SUBJECT_SEED } from '@/data/subject'
 import {
   distributeStandards,
@@ -139,7 +139,8 @@ export const usePlanStore = create<State & Actions>()(
         const id = `plan-${uid()}`
         const school = get().school
         const subject = get().subjects.find((x) => x.id === subjectId) ?? get().subjects[0]
-        const semester = school.calendars[0]?.semester ?? 1
+        // 기본 학기는 관리자가 정해 게시한다 — 학기가 바뀌면 여기부터 새 학기로 시작
+        const semester = school.rules.default_semester ?? school.calendars[0]?.semester ?? 1
         // 정기시험 주는 학사일정의 is_exam에서 파생한다 — 화면에 박아 두지 않는다
         const examWeeks = weeksOf(school, semester)
           .filter((w) => w.is_exam)
@@ -507,7 +508,7 @@ export const usePlanStore = create<State & Actions>()(
     }),
     {
       name: 'easy-plan',
-      version: 5,
+      version: 6,
       /**
        * v3 — 진도 배분이 단원 id에서 성취기준 코드로 바뀌었고,
        * 학사일정이 학기별 배열이 되었으며, 비율이 학기 레이어로 내려왔다.
@@ -528,6 +529,18 @@ export const usePlanStore = create<State & Actions>()(
         if (version < 5 && state.school?.rules) {
           state.school.rules.month_week_rule = 'thursday'
           state.school.rules.perf_area_max_relaxed ??= 40
+        }
+
+        /*
+         * v6 — 2학기 실제 학사일정이 시드에 들어왔고 기본 학기가 2학기가 됐다.
+         * 관리자가 게시하지 않은 수정(school_dirty)이 있으면 건드리지 않는다 —
+         * 어차피 게시본이 있으면 시작할 때 공유본이 이 값을 덮는다.
+         */
+        if (version < 6 && state.school && !state.school_dirty) {
+          state.school.calendars = (state.school.calendars ?? []).map((c) =>
+            c.semester === 2 ? { ...c, year: 2026, weeks: WEEKS_2026_2 } : c,
+          )
+          state.school.rules.default_semester = 2
         }
         if (version >= 4) return state as unknown as State & Actions
 

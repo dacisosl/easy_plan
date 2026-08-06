@@ -62,6 +62,11 @@ export interface SchoolRules {
   /** 학년별 반 수 */
   classes_by_grade: Record<number, number>
   /**
+   * 새 계획서가 시작하는 학기 — 학기가 바뀌면 관리자가 여기만 바꿔 게시한다.
+   * (없는 옛 저장분은 1학기로 본다)
+   */
+  default_semester?: 1 | 2
+  /**
    * 월 기준 주차 표기 방식.
    *  'thursday'     : 목요일이 속한 달로 귀속 (학교 점검표 확정 규칙 — 기본값)
    *  'start'        : 시작일이 속한 달에서 몇 번째로 시작하는 주인지

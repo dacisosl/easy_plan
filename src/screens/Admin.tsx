@@ -10,12 +10,19 @@
  * 여기 값이 바뀌면 진도 배분·월 주차 라벨·진도표 예정시간이 전부 따라 움직인다.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Portal, Screen } from '@/components/ui'
 import { usePlanStore } from '@/store/usePlanStore'
 import { scheduledHours, weeksOf } from '@/lib/derive'
 import { getModelKey, setModelKey, testModelKey } from '@/lib/generateClient'
-import { publishSchool, signInAdminEmail, signInAdminGoogle, syncReady } from '@/lib/schoolSync'
+import {
+  publishSchool,
+  signInAdminEmail,
+  signInAdminGoogle,
+  signOutAdmin,
+  syncReady,
+  watchAdmin,
+} from '@/lib/schoolSync'
 import type { AcademicCalendar, Week } from '@/types'
 
 type Tab = 'calendar' | 'hours' | 'rules'
@@ -102,6 +109,14 @@ function PublishBar() {
   const [busy, setBusy] = useState(false)
   const [login, setLogin] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  /* 지금 로그인돼 있는 관리자 — 세션 복원이 비동기라 구독으로 받는다 */
+  const [adminEmail, setAdminEmail] = useState<string | null>(null)
+
+  useEffect(() => {
+    let off: (() => void) | undefined
+    void watchAdmin(setAdminEmail).then((f) => (off = f))
+    return () => off?.()
+  }, [])
 
   const publish = async () => {
     setBusy(true)
@@ -140,9 +155,25 @@ function PublishBar() {
           </span>
         )}
       </span>
-      <button className="btn btn-sm shrink-0" disabled={busy} onClick={publish}>
-        {busy ? '게시 중…' : '모든 선생님에게 게시'}
-      </button>
+      <div className="flex shrink-0 items-center gap-3">
+        {adminEmail && (
+          <span className="flex items-center gap-2 text-[12px] text-ink-3">
+            {adminEmail}
+            <button
+              className="cursor-pointer border-0 bg-transparent p-0 text-[12px] text-ink-3 underline-offset-4 hover:underline"
+              onClick={() => {
+                void signOutAdmin()
+                setMsg(null)
+              }}
+            >
+              로그아웃
+            </button>
+          </span>
+        )}
+        <button className="btn btn-sm" disabled={busy} onClick={publish}>
+          {busy ? '게시 중…' : '모든 선생님에게 게시'}
+        </button>
+      </div>
 
       {login && (
         <PublishLogin
@@ -533,6 +564,21 @@ function RulesTab() {
           ))}
         </div>
       </div>
+
+      <label className="flex max-w-[560px] flex-col gap-2">
+        <span className="label">기본 학기</span>
+        <select
+          className="control"
+          value={r.default_semester ?? 1}
+          onChange={(e) => set({ default_semester: Number(e.target.value) as 1 | 2 })}
+        >
+          <option value={1}>1학기</option>
+          <option value={2}>2학기</option>
+        </select>
+        <span className="hint">
+          새 계획서가 이 학기로 시작합니다 — 학기가 바뀌면 여기만 바꿔 게시하면 됩니다.
+        </span>
+      </label>
 
       <label className="flex max-w-[560px] flex-col gap-2">
         <span className="label">월 기준 주차 표기</span>

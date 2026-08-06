@@ -67,10 +67,15 @@ async function firebaseApp() {
   return getApps().length ? getApp() : initializeApp(config)
 }
 
-/** 지금 로그인돼 있는 계정 이메일 (없으면 null) */
-export async function currentAdminEmail(): Promise<string | null> {
-  const { getAuth } = await import('firebase/auth')
-  return getAuth(await firebaseApp()).currentUser?.email ?? null
+/**
+ * 로그인 상태 구독 — 이메일(없으면 null)을 보내 준다. 반환값은 구독 해제 함수.
+ *
+ * currentUser를 바로 읽으면 안 된다: 파이어베이스는 저장된 세션을 비동기로
+ * 복원해서, 초기화 직후에는 로그인돼 있어도 null이 나온다.
+ */
+export async function watchAdmin(cb: (email: string | null) => void): Promise<() => void> {
+  const { getAuth, onAuthStateChanged } = await import('firebase/auth')
+  return onAuthStateChanged(getAuth(await firebaseApp()), (u) => cb(u?.email ?? null))
 }
 
 export async function signInAdminGoogle(): Promise<string> {
