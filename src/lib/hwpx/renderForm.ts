@@ -845,7 +845,11 @@ export async function renderForm(
     else {
       const grades: ('A' | 'B' | 'C' | 'D' | 'E')[] =
         subject.scale_type === 'LVL_3' ? ['A', 'B', 'C'] : ['A', 'B', 'C', 'D', 'E']
-      const levels = ai?.sections.semesterLevels ?? subject.semester_levels
+      // 교사가 직접 쓴 문장이 있으면 AI보다 우선하고, 검토 표시(빨강)도 안 붙인다
+      const manualLv = subject.semester_levels_manual === true
+      const levels = manualLv
+        ? subject.semester_levels
+        : (ai?.sections.semesterLevels ?? subject.semester_levels)
       const rows = doc.rows(semTbl)
       const minRow = rows.findIndex((_, r) =>
         (doc.cellText(semTbl, r, 0) ?? '').includes('최소 성취수준'),
@@ -853,7 +857,7 @@ export async function renderForm(
 
       for (const g of grades) {
         const r = rows.findIndex((_, k) => (doc.cellText(semTbl, k, 0) ?? '').trim() === g)
-        if (r > 0) doc.setCell(semTbl, r, 1, levels[g] ?? '', { red: !!ai })
+        if (r > 0) doc.setCell(semTbl, r, 1, levels[g] ?? '', { red: !!ai && !manualLv })
       }
       // 3단계 과목은 D·E 행을 비운다
       for (const g of ['D', 'E'] as const) {

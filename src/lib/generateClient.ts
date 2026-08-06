@@ -55,7 +55,10 @@ export function setModelKey(key: string): void {
 
 type ModelResult = { json: unknown } | { reason: string }
 
-async function callModel(prompt: { system: string; user: string }, key: string): Promise<ModelResult> {
+async function callModel(
+  prompt: { system: string; user: string },
+  key: string,
+): Promise<ModelResult> {
   if (!key) return { reason: 'no-key' }
   try {
     const res = await fetch(ENDPOINT, {
@@ -156,6 +159,10 @@ export async function generateDraft(
   const rSections = key ? await callModel(sectionsPrompt(plan, subject), key) : null
   const sections = rSections && ok(rSections) ? parseSections(rSections.json, fbSections) : null
   if (rSections && !ok(rSections)) failReason ??= rSections.reason
+  // 교사가 직접 쓴 학기단위 성취수준은 모델이 덮지 않는다 (렌더도 같은 우선순위를 본다)
+  if (subject.semester_levels_manual && sections) {
+    sections.value.semesterLevels = subject.semester_levels
+  }
   if (!key) await sleep(250)
 
   opts?.onProgress?.('weekly')

@@ -71,7 +71,8 @@ interface Actions {
   removeUnit: (unitId: string) => void
 
   /** 앵커·학사일정이 바뀌면 진도를 다시 배분한다 */
-  redistribute: () => void
+  /** force = 수동 배분을 버리고 자동으로 되돌릴 때만 */
+  redistribute: (force?: boolean) => void
   /** 그 주의 성취기준을 손으로 고친다 */
   setWeekStandards: (week: number, codes: string[]) => void
 
@@ -318,10 +319,13 @@ export const usePlanStore = create<State & Actions>()(
         get().patchSubject({ units })
       },
 
-      redistribute: () => {
+      redistribute: (force = false) => {
         const plan = get().current()
         const subject = get().currentSubject()
         if (!plan || !subject) return
+        // 손으로 나눈 배분은 자동이 덮지 않는다 — 시험 범위를 바꿨다고 지워지면 안 된다.
+        // force는 '자동 배분으로 되돌리기' 버튼만 쓴다.
+        if (plan.distribution_manual && !force) return
         const school = get().school
         const weeks = weeksOf(school, plan.semester)
         // 직접 고른 성취기준이 있는 수행평가는 진도 배분의 경계가 된다 —
@@ -340,13 +344,17 @@ export const usePlanStore = create<State & Actions>()(
                 ),
               },
         )
-        get().patchPlan({ distribution, performances })
+        get().patchPlan({ distribution, performances, distribution_manual: false })
       },
 
       setWeekStandards: (week, codes) => {
         const plan = get().current()
         if (!plan) return
-        get().patchPlan({ distribution: { ...plan.distribution, [week]: codes } })
+        // 주 하나라도 손대면 그 순간부터 수동 배분이다
+        get().patchPlan({
+          distribution: { ...plan.distribution, [week]: codes },
+          distribution_manual: true,
+        })
       },
 
       upsertPerf: (input) => {

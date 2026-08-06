@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChipPicker, ConfirmDialog, Field, Fieldset, Screen } from '@/components/ui'
+import { DistributionEditor, SemesterLevelsEditor } from '@/components/ManualEditors'
 import { SubjectPicker, type SubjectDraft } from '@/components/SubjectPicker'
 import { usePlanStore } from '@/store/usePlanStore'
 import {
@@ -33,6 +34,13 @@ import type { ExamPart, FocusTarget, Performance, SemesterPlan, Subject } from '
 function errorKey(e: { rule?: number; perfId?: string; detail: string }): string {
   return `${e.rule}:${e.perfId ?? ''}:${e.detail}`
 }
+
+/**
+ * '직접 입력(선택)' 버튼 — 연한 회색, 작은 글씨.
+ * 기본은 자동이고 이 문은 원하는 사람만 여는 곁문이라, 주 버튼보다 한 톤 눌러 둔다.
+ */
+const MUTE_BTN =
+  'cursor-pointer rounded-control border border-line-soft bg-surface-off px-3 py-1.5 text-[12.5px] text-ink-2 hover:bg-surface-sub whitespace-nowrap'
 
 /** 입력 즉시 반영하되 타이핑 중에는 재계산을 미룬다 */
 function useDebounced<T>(value: T, apply: (v: T) => void, ms = 300) {
@@ -445,6 +453,9 @@ function PlanForm({
   const showErrors = plan.performances.some((p) => p.name.trim().length > 0)
   /* 눈으로 확인한 점검 항목 — 내용이 바뀌면 열쇠가 달라져 저절로 풀린다 */
   const [seenErrors, setSeenErrors] = useState<Set<string>>(new Set())
+  /* 직접 입력(선택) 편집기 — 자동을 손으로 바꾸고 싶은 사람만 연다 */
+  const [distEditorOpen, setDistEditorOpen] = useState(false)
+  const [levelsEditorOpen, setLevelsEditorOpen] = useState(false)
   const firstError = (t: FocusTarget) =>
     showErrors ? result.errors.find((e) => e.target === t)?.title : undefined
 
@@ -795,6 +806,14 @@ function PlanForm({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <h2 className="fs-title shrink-0 sm:w-[104px]">정기시험</h2>
           <div className="flex flex-1 flex-wrap items-center gap-2">
+            {/* 진도를 손으로 나누고 싶은 선생님용 곁문 — 오른쪽 끝에 조용히 */}
+            <button
+              className={`${MUTE_BTN} order-last sm:ml-auto`}
+              onClick={() => setDistEditorOpen(true)}
+            >
+              교과진도계획 직접 입력(선택)
+              {plan.distribution_manual && <span className="ml-1 text-navy">· 수동</span>}
+            </button>
             {([2, 1] as const).map((n) => (
               <button
                 key={n}
@@ -978,6 +997,14 @@ function PlanForm({
             ))}
       </Fieldset>
 
+      {/* 문서 끝쪽(Ⅺ 나) 문장을 손으로 쓰고 싶은 사람용 곁문 */}
+      <div className="flex justify-end">
+        <button className={MUTE_BTN} onClick={() => setLevelsEditorOpen(true)}>
+          학기단위 성취수준 직접 입력(선택)
+          {subject.semester_levels_manual && <span className="ml-1 text-navy">· 수동</span>}
+        </button>
+      </div>
+
       {/*
        * 점검 목록 — 막지 않고 데려다준다.
        *
@@ -1038,6 +1065,9 @@ function PlanForm({
           )
         )}
       </div>
+
+      {distEditorOpen && <DistributionEditor onClose={() => setDistEditorOpen(false)} />}
+      {levelsEditorOpen && <SemesterLevelsEditor onClose={() => setLevelsEditorOpen(false)} />}
 
       {/* 비율 조정에서 지울 때 — 내용이 든 것만 한 번 묻는다 */}
       {confirmPerfId && (

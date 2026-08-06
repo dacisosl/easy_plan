@@ -203,6 +203,8 @@ export interface Subject {
   units: Unit[]
   /** 2-4. 학기단위 성취수준 A~E 5개 */
   semester_levels: Partial<Record<'A' | 'B' | 'C' | 'D' | 'E', string>>
+  /** 학기단위 성취수준을 교사가 직접 썼는가 — 참이면 AI가 덮어쓰지 않고 검정 글씨로 나간다 */
+  semester_levels_manual?: boolean
   /** 최소 성취수준 (공통과목만) */
   min_level: string | null
   /** 샘플 시드 데이터 여부 — xlsx 임포트로 교체되면 false */
@@ -379,6 +381,12 @@ export interface SemesterPlan {
    * 같은 코드가 연속 주에 있으면 '이어짐'이며 그것도 파생이다 (isContinued).
    */
   distribution: Record<number, string[]>
+  /**
+   * 진도 배분을 교사가 직접 손댔는가.
+   * 참이면 자동 재배분(redistribute)이 이 배분을 덮어쓰지 않는다 —
+   * 시험 범위를 바꿔도 손으로 나눈 것이 지워지면 안 된다.
+   */
+  distribution_manual?: boolean
   /**
    * 직접 확인 체크 결과 — hwpx 빨간 글씨 검토 방식으로 대체되어 더는 쓰지 않는다.
    * 구버전 저장분과의 호환을 위해 남겨 둔다.
