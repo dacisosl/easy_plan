@@ -34,6 +34,8 @@ export type { FocusTarget }
 
 interface State {
   school: SchoolLayer
+  /** 관리자가 게시하지 않은 로컬 수정이 있는가 — 있으면 공유본을 덮어쓰지 않는다 */
+  school_dirty: boolean
   subjects: Subject[]
   plans: SemesterPlan[]
   currentPlanId: string | null
@@ -59,6 +61,10 @@ interface Actions {
   patchPlan: (patch: Partial<SemesterPlan>) => void
   patchSubject: (patch: Partial<Subject>) => void
   patchSchool: (patch: Partial<SchoolLayer>) => void
+  /** 공유본(Firestore)을 받아 앉힌다 — 게시 직후·앱 시작 때 */
+  applySharedSchool: (school: SchoolLayer) => void
+  /** 게시가 끝나 로컬과 공유본이 같아졌다 */
+  markSchoolPublished: () => void
 
   /** /api/subjects/[name] 결과를 과목 레이어로 넣는다 (이름 일치 시 갱신). 반환 = subject id */
   upsertSubject: (imported: ImportedSubject & { units?: Unit[] }) => string
@@ -109,6 +115,7 @@ export const usePlanStore = create<State & Actions>()(
   persist(
     (set, get) => ({
       school: SCHOOL_SEED,
+      school_dirty: false,
       subjects: [SUBJECT_SEED],
       /*
        * 처음은 빈 손이다. 견본 계획서를 넣어 두면 새로 온 모든 사람이
@@ -201,7 +208,13 @@ export const usePlanStore = create<State & Actions>()(
           }
         }),
 
-      patchSchool: (patch) => set((s) => ({ school: { ...s.school, ...patch } })),
+      // 관리자 수정은 '게시 안 됨' 표시를 함께 남긴다 — 시작 때 공유본이 덮지 않도록
+      patchSchool: (patch) =>
+        set((s) => ({ school: { ...s.school, ...patch }, school_dirty: true })),
+
+      applySharedSchool: (school) => set({ school, school_dirty: false }),
+
+      markSchoolPublished: () => set({ school_dirty: false }),
 
       upsertSubject: (imported) => {
         const existing = get().subjects.find((x) => x.name === imported.name)
@@ -590,6 +603,7 @@ export const usePlanStore = create<State & Actions>()(
       },
       partialize: (s) => ({
         school: s.school,
+        school_dirty: s.school_dirty ?? false,
         subjects: s.subjects,
         plans: s.plans,
       }),

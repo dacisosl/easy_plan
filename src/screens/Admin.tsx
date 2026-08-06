@@ -11,10 +11,11 @@
  */
 
 import { useState } from 'react'
-import { Screen } from '@/components/ui'
+import { Portal, Screen } from '@/components/ui'
 import { usePlanStore } from '@/store/usePlanStore'
 import { scheduledHours, weeksOf } from '@/lib/derive'
 import { getModelKey, setModelKey, testModelKey } from '@/lib/generateClient'
+import { publishSchool, signInAdminEmail, signInAdminGoogle, syncReady } from '@/lib/schoolSync'
 import type { AcademicCalendar, Week } from '@/types'
 
 type Tab = 'calendar' | 'hours' | 'rules'
@@ -25,7 +26,6 @@ const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'rules', label: '학교 규칙', hint: '새 계획서의 기본값' },
 ]
 
-
 /** 배포표에서 다룰 주당 이수시간 */
 const CREDITS = [1, 2, 3, 4, 5]
 
@@ -33,8 +33,6 @@ export function Admin() {
   const { school, patchSchool, go } = usePlanStore()
   const [tab, setTab] = useState<Tab>('calendar')
   const [semester, setSemester] = useState<1 | 2>(1)
-
-
 
   const patchCalendar = (next: AcademicCalendar) =>
     patchSchool({
@@ -74,6 +72,8 @@ export function Admin() {
         ))}
       </div>
 
+      {syncReady && <PublishBar />}
+
       {tab === 'calendar' && (
         <CalendarTab
           semester={semester}
@@ -86,6 +86,158 @@ export function Admin() {
       {tab === 'hours' && <HoursTab />}
       {tab === 'rules' && <RulesTab />}
     </Screen>
+  )
+}
+
+/* ── 게시 — 여기서 바꾼 설정을 전 교사에게 ─────── */
+
+/**
+ * 관리자 수정은 이 브라우저에만 저장된다(정적 호스팅 — 서버가 없다).
+ * '게시'를 눌러야 Firestore 공유본에 올라가고, 그때부터 모든 교사가
+ * 앱을 열 때 그 값을 받아 시작한다. 게시에는 관리자 로그인이 필요하다 —
+ * 누가 게시할 수 있는지는 서버 규칙(firestore.rules)이 이메일로 판별한다.
+ */
+function PublishBar() {
+  const { school, school_dirty, markSchoolPublished } = usePlanStore()
+  const [busy, setBusy] = useState(false)
+  const [login, setLogin] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const publish = async () => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      await publishSchool(school)
+      markSchoolPublished()
+      setMsg({ ok: true, text: '게시했습니다 — 모든 선생님이 다음 접속부터 이 설정을 씁니다' })
+    } catch (e) {
+      const m = e instanceof Error ? e.message : '게시하지 못했습니다'
+      if (m === '로그인이 필요합니다') setLogin(true)
+      else setMsg({ ok: false, text: m })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      className={`flex flex-wrap items-center justify-between gap-3 rounded-box border px-4 py-3 ${
+        school_dirty ? 'border-amber-line bg-amber-bg' : 'border-line-card bg-surface-sub'
+      }`}
+    >
+      <span className="text-[13px] leading-relaxed text-ink-2">
+        {school_dirty ? (
+          <>
+            <b className="text-amber">게시 안 된 변경이 있습니다</b> — 이 브라우저에만 저장된
+            상태입니다. 게시해야 모든 선생님에게 반영됩니다.
+          </>
+        ) : (
+          '여기서 바꾼 설정은 게시를 눌러야 모든 선생님에게 공유됩니다.'
+        )}
+        {msg && (
+          <span className={`ml-2 font-semibold ${msg.ok ? 'text-navy' : 'text-red'}`}>
+            {msg.text}
+          </span>
+        )}
+      </span>
+      <button className="btn btn-sm shrink-0" disabled={busy} onClick={publish}>
+        {busy ? '게시 중…' : '모든 선생님에게 게시'}
+      </button>
+
+      {login && (
+        <PublishLogin
+          onDone={() => {
+            setLogin(false)
+            void publish()
+          }}
+          onClose={() => setLogin(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** 게시용 관리자 로그인 — 구글 또는 콘솔에서 만든 관리 계정 */
+function PublishLogin({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState<'google' | 'email' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async (kind: 'google' | 'email', job: () => Promise<string>) => {
+    setError(null)
+    setBusy(kind)
+    try {
+      await job()
+      onDone()
+    } catch (e) {
+      const m = e instanceof Error ? e.message : '로그인에 실패했습니다'
+      // 창을 닫은 것은 오류가 아니다
+      setError(/popup-closed|cancelled/i.test(m) ? null : m)
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Portal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,28,36,0.35)] p-4"
+        onClick={onClose}
+      >
+        <div
+          className="flex w-full max-w-[360px] flex-col gap-4 rounded-card bg-surface p-6"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex flex-col gap-1">
+            <span className="text-base font-semibold">게시하려면 관리자 로그인</span>
+            <span className="text-[12.5px] text-ink-3">게시 권한은 관리자 계정에만 있습니다.</span>
+          </div>
+          {error && (
+            <p className="rounded-control border border-red-line bg-red-bg px-3 py-2 text-[13px] text-red-ink">
+              {error}
+            </p>
+          )}
+          <button
+            className="btn btn-ghost"
+            disabled={busy !== null}
+            onClick={() => run('google', signInAdminGoogle)}
+          >
+            {busy === 'google' ? '로그인 중…' : '구글로 로그인'}
+          </button>
+          <form
+            className="flex flex-col gap-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (busy === null) void run('email', () => signInAdminEmail(email, password))
+            }}
+          >
+            <input
+              className="control"
+              type="email"
+              placeholder="관리 계정 이메일"
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <input
+              className="control"
+              type="password"
+              placeholder="비밀번호"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              className="btn"
+              type="submit"
+              disabled={busy !== null || !email.includes('@') || password.length < 6}
+            >
+              {busy === 'email' ? '로그인 중…' : '로그인'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </Portal>
   )
 }
 
@@ -406,8 +558,6 @@ function RulesTab() {
   )
 }
 
-
-
 /* ── AI 문안 키 (선택) ─────────────────────────── */
 
 /**
@@ -463,9 +613,9 @@ function ModelKeySection() {
         </span>
       )}
       <span className="hint">
-        키가 있으면 문안 초안(Ⅱ·Ⅲ·주안점·성취수준)을 AI가 과목에 맞게 쓰고, 없으면 기본
-        문구로 만듭니다 — 어느 쪽이든 계획서는 완성됩니다. 키는 이 브라우저에만 저장되고
-        OpenRouter로만 전송됩니다. 공용 컴퓨터라면 쓰고 나서 지워 주세요.
+        키가 있으면 문안 초안(Ⅱ·Ⅲ·주안점·성취수준)을 AI가 과목에 맞게 쓰고, 없으면 기본 문구로
+        만듭니다 — 어느 쪽이든 계획서는 완성됩니다. 키는 이 브라우저에만 저장되고 OpenRouter로만
+        전송됩니다. 공용 컴퓨터라면 쓰고 나서 지워 주세요.
       </span>
     </div>
   )
