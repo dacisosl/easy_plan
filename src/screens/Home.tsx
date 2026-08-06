@@ -993,7 +993,7 @@ function PlanForm({
         {plan.performances.length === 0
           ? null
           : plan.performances.map((p) => (
-              <PerfCard key={p.id} perfId={p.id} weeks={teachWeeks} subject={subject} />
+              <PerfCard key={p.id} perfId={p.id} weeks={weeks} subject={subject} />
             ))}
       </Fieldset>
 
@@ -1281,7 +1281,7 @@ function PerfCard({
   subject,
 }: {
   perfId: string
-  weeks: { no: number }[]
+  weeks: { no: number; is_exam: boolean }[]
   subject: Subject
 }) {
   const { school, upsertPerf, removePerf } = usePlanStore()
@@ -1359,11 +1359,23 @@ function PerfCard({
               })
             }
           >
-            {weeks.map((w) => (
-              <option key={w.no} value={w.no}>
-                {monthWeekLabel(school, plan.semester, w.no)} ({w.no}주)
-              </option>
-            ))}
+            {/*
+             * 시험 주도 목록에 보인다 — 고를 수는 없지만, '1회고사 앞뒤 어디쯤'인지
+             * 눈으로 짚으며 고르라고 기준점으로 남겨 둔다. 빨간 글씨로 구분한다.
+             * (option 색은 데스크톱 브라우저에서만 먹는다 — 휴대폰은 문구로 구분)
+             */}
+            {weeks.map((w) =>
+              w.is_exam ? (
+                <option key={w.no} value={w.no} disabled className="bg-red-bg text-red">
+                  {monthWeekLabel(school, plan.semester, w.no)} ({w.no}주) — ⨯{' '}
+                  {plan.exams.find((e) => e.week === w.no)?.no ?? ''}회 정기시험
+                </option>
+              ) : (
+                <option key={w.no} value={w.no}>
+                  {monthWeekLabel(school, plan.semester, w.no)} ({w.no}주)
+                </option>
+              ),
+            )}
           </select>
         </label>
         <div className="flex flex-col gap-2">
