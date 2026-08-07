@@ -1415,7 +1415,7 @@ function PerfCard({
       </label>
 
       <div className="flex flex-wrap items-center gap-2">
-        {perf.standard_codes.map((c) => (
+        {[...perf.standard_codes].sort().map((c) => (
           <span key={c} className="chip chip-tag" title={stdText(c)}>
             {c}
           </span>

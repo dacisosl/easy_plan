@@ -394,7 +394,8 @@ export async function renderForm(
         title: p.name,
         ratio: `${p.ratio}%`,
         essay: p.method_checks.includes('서술·논술') ? `논술형 ${p.ratio}%` : '0%',
-        std: p.standard_codes.join(', '),
+        // 낮은 코드부터 — 정렬 전에 저장된 옛 계획서도 문서에서는 가지런히
+        std: [...p.standard_codes].sort().join(', '),
         when: monthWeekLabel(school, plan.semester, p.week),
       })),
     ]
@@ -907,7 +908,7 @@ function fillPerfTable(
   const elements = perf.rubric.length
   if (elements === 0) warn(`${index + 1}번 수행평가에 루브릭이 없습니다`)
 
-  doc.setCell(tbl, 0, 1, perf.standard_codes.join(', ') || '')
+  doc.setCell(tbl, 0, 1, [...perf.standard_codes].sort().join(', ') || '')
   doc.setCell(tbl, 1, 1, perf.activity || '', { red: opts?.red })
   doc.setCell(
     tbl,

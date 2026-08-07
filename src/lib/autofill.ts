@@ -280,7 +280,8 @@ export function autoStandardCodes(
     .filter(([wk]) => Number(wk) <= week)
     .sort((a, b) => Number(a[0]) - Number(b[0]))
     .flatMap(([, codes]) => codes)
-  return [...new Set(taught)].slice(-Math.min(3, maxCodes))
+  // 낮은 코드부터 — 문서에 찍히는 순서라 정렬해 둔다 (고른 건 '마지막 3개' 그대로)
+  return [...new Set(taught)].slice(-Math.min(3, maxCodes)).sort()
 }
 
 /**
@@ -318,8 +319,9 @@ export function buildPerformance(args: {
     // 규칙 4·5 — 만점의 20% 이상 40% 미만, 1점 초과. 프롬프트가 정한 기본은 30%.
     base_score: Math.max(2, Math.round(ratio * 0.3)),
     week,
+    // 직접 골랐어도 낮은 코드부터 — 고른 순서는 의미가 아니라 우연이다
     standard_codes: manual
-      ? args.standardCodes!.slice(0, school.rules.standards_per_perf_max)
+      ? [...args.standardCodes!].sort().slice(0, school.rules.standards_per_perf_max)
       : auto,
     standards_manual: manual || undefined,
     essay_ratio: args.essayRatio ?? undefined,
