@@ -357,6 +357,27 @@ export function distributeStandards(
   codeSegments.push(codes.slice(cStart))
   weekSegments.push(tWeeks.slice(wStart))
 
+  /*
+   * ★ 주가 하나도 없는 구간의 코드는 이웃 구간으로 넘긴다.
+   *
+   * 경계가 수업 주 없는 자리에 걸리면(마지막 수업 주 뒤의 시험, 붙어 있는 두 경계 등)
+   * 구간이 코드는 있는데 주가 0개가 된다. 그대로 두면 그 성취기준들이 **조용히
+   * 사라져서** 규칙 10("배정되지 않은 성취기준 N개")으로만 나타난다 — 원인을
+   * 알 수 없는 오류처럼 보인다. 잃느니 이웃 주에 몰아넣는다. 순서는 유지된다.
+   */
+  for (let i = 0; i < codeSegments.length - 1; i++) {
+    if (codeSegments[i].length > 0 && weekSegments[i].length === 0) {
+      codeSegments[i + 1] = [...codeSegments[i], ...codeSegments[i + 1]]
+      codeSegments[i] = []
+    }
+  }
+  for (let i = codeSegments.length - 1; i > 0; i--) {
+    if (codeSegments[i].length > 0 && weekSegments[i].length === 0) {
+      codeSegments[i - 1] = [...codeSegments[i - 1], ...codeSegments[i]]
+      codeSegments[i] = []
+    }
+  }
+
   for (let i = 0; i < codeSegments.length; i++) {
     Object.assign(result, allocateSegment(codeSegments[i], weekSegments[i] ?? []))
   }

@@ -107,6 +107,17 @@ describe('distributeStandards — 수행평가 경계', () => {
     expect(dist).toEqual(base)
   })
 
+  it('주 없는 구간의 코드는 이웃으로 넘어간다 — 조용히 사라지면 안 된다', () => {
+    // 마지막 수업 주(21주) 뒤에 시험을 두고 앵커를 중간 코드로 — 나머지 코드가
+    // '주 0개 구간'에 갇히는 상황. 그래도 전부 어딘가에 배정돼야 한다.
+    const dist = distributeStandards(subject, weeks, [
+      { week: 8, anchor_code: ordered[3] },
+      { week: 21, anchor_code: ordered[10] },
+    ])
+    const placed = new Set(Object.values(dist).flat())
+    for (const c of ordered) expect(placed.has(c), c).toBe(true)
+  })
+
   it('시험 경계와 함께 쓰여도 시험 경계는 그대로다', () => {
     const dist = distributeStandards(subject, weeks, PLAN_SEED.exams, [
       { week: 6, standard_codes: [ordered[3]], standards_manual: true },
